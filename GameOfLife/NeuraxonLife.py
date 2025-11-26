@@ -1,5 +1,5 @@
 # Neuraxon Game of Life v.1.0 (Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
-# Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Jose Sanchez  https://josesanchezgarcia.com/
+# Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 
@@ -1483,7 +1483,7 @@ class Renderer:
         self.dt = self.clock.tick(fps_cap) / 1000.0
         return self.dt
 
-def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: float = 0.05, StartingNxErs: int = 30, MaxNxErs: int = 400, MaxFood: int = 300, FoodRespan: int = 600, StartFood: float = 40.0, MaxNeurons: int = 12, GlobalTimeSteps: int = 60, TextureLand: Optional[str] = None, TextureSea: Optional[str] = None, TextureRock: Optional[str] = None, TextureFood: Optional[str] = None, TextureNxEr: Optional[str] = None, TexturesAlpha: float = 0.7, MateCooldownSeconds: int = 10, random_seed: Optional[int] = None):
+def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: float = 0.05, StartingNxErs: int = 30, MaxNxErs: int = 150, MaxFood: int = 300, FoodRespan: int = 600, StartFood: float = 40.0, MaxNeurons: int = 12, GlobalTimeSteps: int = 60, TextureLand: Optional[str] = None, TextureSea: Optional[str] = None, TextureRock: Optional[str] = None, TextureFood: Optional[str] = None, TextureNxEr: Optional[str] = None, TexturesAlpha: float = 0.7, MateCooldownSeconds: int = 10, random_seed: Optional[int] = None):
     """
     The main function that initializes and runs the entire Game of Life simulation.
     It orchestrates the world generation, agent creation, the main simulation loop,
@@ -1494,7 +1494,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
     NxWorldSea = _clamp(float(NxWorldSea), 0.0, 0.95)
     NxWorldRocks = _clamp(float(NxWorldRocks), 0.0, 0.9)
     StartingNxErs = _clamp(int(StartingNxErs), 10, 100)
-    MaxNxErs = _clamp(int(MaxNxErs), 200, 1000)
+    MaxNxErs = _clamp(int(MaxNxErs), 100, 180) #Clamped atm to 180 to prevent the exponential growth in computational cost
     MaxFood = _clamp(int(MaxFood), 10, 1000)
     FoodRespan = _clamp(int(FoodRespan), 10, 3000)
     StartFood = _clamp(float(StartFood), 10.0, 100.0)
@@ -2325,4 +2325,3 @@ if __name__ == "__main__":
         print("Game cancelled by user.")
         pygame.quit()
         sys.exit(0)
-
