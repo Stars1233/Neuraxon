@@ -10,11 +10,11 @@
 </div>
 
 <br>
-
-New: Experience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).
+New Research and Lite version 2.0<br>
+Nxperience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).
 
 ### Lite Version Features, (Research edition bellow):
-- 🌍 **Procedurally Generated Worlds**: Island-like terrains with land, sea, and obstacles
+- 🌍 **Procedurally Generated Worlds**: Island-like terrains with land, sea, and obstacles and new Earth mode in V 2.0
 - 🧬 **Evolutionary Dynamics**: Agents reproduce, passing neural parameters to offspring
 - 🍖 **Resource Competition**: Food sources respawn dynamically; agents must forage to survive
 - 🤝 **Social Behaviors**: Mating, cooperation, and competition emerge from neural dynamics
@@ -25,7 +25,7 @@ No installation required—just open your browser and explore!
 
 ## 📸 Game Screenshot
 <div align="center">
-  <img src="images/NeuraxonGameOfLifeDemoSreenshot.png" alt="Neuraxon GAme of Life Visualization" width="90%"/>  
+  <img src="images/NeuraxonGameOfLife2.0-DemoSreenshot.png" alt="Neuraxon Game of Life Visualization" width="90%"/>  
 </div>
 
 <hr />
@@ -270,11 +270,11 @@ The hybrid creates "living neural tissue" that:
 - Exhibits emergent complexity and self-organization
 
 
-## 🎮 Neuraxon Game of Life
+## 🎮 Neuraxon Game of Life 2.0
 
 **A complete artificial life simulation powered by Neuraxon networks!**
 
-The **Neuraxon Game of Life** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
+The **Neuraxon Game of Life 2.0 ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
 
 ### Features
 
@@ -285,13 +285,13 @@ The **Neuraxon Game of Life** is a sophisticated demonstration of the framework'
 - 🧠 **Neural Diversity**: Each agent has unique network parameters (learning rates, timescales, connectivity)
 - 📊 **Real-time Analytics**: Track food consumption, exploration, mating success, and fitness scores
 - ⚡ **Parallel Processing**: Multi-core neural network updates for scalable simulations
-- 💾 **Save/Load System**: Preserve entire worlds or extract champion agents
+- 💾 **Save/Load System**: Preserve entire worlds or extract champion agents - Test Mode for Automated World creation
 
 ### Running the Simulation
 
 ```bash
 # Launch with default settings
-python NeuraxonGameOfLife.py
+python NeuraxonGameOfLife2.py
 
 # The configuration screen allows you to customize:
 # - World size and terrain composition
@@ -324,15 +324,19 @@ python NeuraxonGameOfLife.py
 
 ### Agent Behavior
 
-Each NxEr has a **4-output Neuraxon network**:
+Each NxEr has a **5-output Neuraxon network**:
 - **Outputs 1-2**: Movement direction (X, Y)
 - **Output 3**: Cooperation/sharing signal
 - **Output 4**: Mating/attack intention
+- **Output 5**: Clan Food sharing/help
 
-**Input sensors** (3 neurons):
+**Input sensors** (6 neurons):
 - Food detection
 - Agent proximity
 - Terrain type
+- Vison range
+- smeel radius
+- Hunger
 
 Agents exhibit:
 - **Foraging**: Seeking and harvesting food sources
@@ -450,6 +454,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
