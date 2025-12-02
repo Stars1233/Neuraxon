@@ -3,12 +3,11 @@
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.0:
-# - Added visual off mode with V Key
-# - Added Test Mode at start of the game with a time limit of 20 minutes and 10 games without rounds
+# - Added visual off mode with V Key, for Test Mode is recommended
+# - Added Test Mode at start of the game with a time limit as ajustable by the user in the config screen, default is 20 minutes and 10 games without rounds
 # - Tuned some of the parameters calculations, baselines and ranges
 # - Addded 3 new inputs to the network: Hunger(propiception), Sight (range), Smell (radius)
 # - Addded 1 new output to the network: Give Food for Clan members
-
 
 
 import os, sys, time, json, math, random, pathlib
@@ -2591,7 +2590,7 @@ def run_config_screen() -> Optional[Dict[str, any]]:
     """
     pygame.init()
     screen = pygame.display.set_mode((1920, 1080), pygame.RESIZABLE)
-    pygame.display.set_caption("Neuraxon Game Of Life v 1.0 By David Vivancos & Dr Jose Sanchez for Qubic Science - Configuration")
+    pygame.display.set_caption("Neuraxon Game Of Life v 2.0 (Research Version) By David Vivancos & Dr Jose Sanchez for Qubic Science - Configuration")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 16); title_font = pygame.font.SysFont("consolas", 32, bold=True)
     # Define the parameters that will be configurable via sliders.
