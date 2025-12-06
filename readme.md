@@ -7,6 +7,7 @@
 <a href="https://huggingface.co/spaces/DavidVivancos/NeuraxonLife"><img src="https://img.shields.io/badge/🤗%20Demo-HuggingFace-yellow"> (Game Of Life Lite)</a>
 <a href="https://www.researchgate.net/publication/397331336_Neuraxon"><img src="https://img.shields.io/badge/Paper-ResearchGate-00CCBB.svg"></a>
 <a href="https://github.com/DavidVivancos/Neuraxon"><img alt="GitHub stars" src="https://img.shields.io/github/stars/DavidVivancos/Neuraxon?style=social"></a>
+<a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2--1M-orange"></a>
 </div>
 
 <br>
@@ -30,8 +31,52 @@ No installation required—just open your browser and explore!
 
 <hr />
 
+## 📊 NeuraxonLife2-1M Dataset
 
-New: Experience Neuraxon's trinary neural dynamics with our **interactive 3D visualization** at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/Neuraxon).
+**NEW**: We've released a comprehensive dataset of 1M+ evolved neural networks from our artificial life simulations!
+
+<a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M"><img src="https://img.shields.io/badge/🤗%20Dataset-HuggingFace-orange"></a>
+
+The **NeuraxonLife2-1M Dataset** contains detailed simulation data capturing:
+- 🧠 Complete neural architectures and synaptic connectivity
+- ⚡ Multi-timescale synaptic weights (fast, slow, meta)
+- 🧬 Neuromodulation states (dopamine, serotonin, acetylcholine, norepinephrine)
+- 📈 Behavioral performance and fitness metrics
+- 🌳 Dendritic branch computation data
+
+### Dataset Structure
+
+| Table | Description | Key Data |
+|-------|-------------|----------|
+| `nxers.parquet` | Agent-level data | Neural parameters, fitness scores, lineage |
+| `neurons.parquet` | Neuron-level data | Membrane potentials, phases, health |
+| `synapses.parquet` | Synapse-level data | Multi-timescale weights, delays, plasticity |
+| `branches.parquet` | Dendritic branches | Branch potentials, plateau dynamics |
+
+### Quick Start
+```python
+from datasets import load_dataset
+
+# Load from Hugging Face Hub
+dataset = load_dataset("DavidVivancos/NeuraxonLife2-1M")
+
+# Or with pandas
+import pandas as pd
+nxers = pd.read_parquet('neuraxonLife2-1M_nxers.parquet')
+```
+
+### Research Applications
+
+- **Fitness Prediction**: Predict agent fitness from neural parameters
+- **Evolutionary Dynamics**: Track neural evolution across generations
+- **Network Topology Analysis**: Study evolved architectures
+- **Neuromodulation Research**: Investigate modulator dynamics
+- **Synaptic Weight Distribution**: Analyze learned connection patterns
+
+👉 [**Explore the full dataset on Hugging Face**](https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M)
+
+
+Also Experience Neuraxon's trinary neural dynamics with our **interactive 3D visualization** at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/Neuraxon).
 
 ### Interactive Network Builder Demo Features:
 - 🧠 **Build Custom Networks**: Configure neurons, synapses, and plasticity parameters
@@ -209,7 +254,9 @@ Neuraxon is particularly suited for:
 - **Energy-efficient AI** leveraging sparse, event-driven processing
 - **Artificial life simulations** with evolutionary dynamics
 - **Multi-agent systems** with emergent social behaviors
-
+- **Neural architecture research** using our 1M+ evolved network dataset
+- **Benchmarking** plasticity and neuromodulation algorithms
+  
 ## 🖥️ Visualization & Tools
 
 ### Interactive Web Demo
@@ -385,7 +432,6 @@ This simulation demonstrates Neuraxon's suitability for:
 ## 📚 Citation
 
 If you use Neuraxon in your research, please cite:
-
 ```bibtex
 @article{Vivancos-Sanchez-2025neuraxon,
     title={Neuraxon: A New Neural Growth \& Computation Blueprint},
@@ -394,6 +440,17 @@ If you use Neuraxon in your research, please cite:
     journal={ResearchGate Preprint},
     institution={Artificiology Research, UNIR University, Qubic Science},
     url={https://www.researchgate.net/publication/397331336_Neuraxon}
+}
+```
+
+If you use the NeuraxonLife2-1M dataset, please also cite:
+```bibtex
+@dataset{NeuraxonLife2-1M,
+  title={Neuraxon: Artificial Life 2.0 BioInspired Neural Network Simulation 1M Dataset},
+  author={Vivancos, David and Sanchez, Jose},
+  year={2025},
+  publisher={Hugging Face},
+  url={https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M}
 }
 ```
 
@@ -454,6 +511,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
