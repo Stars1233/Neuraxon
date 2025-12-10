@@ -34,7 +34,7 @@ No installation required—just open your browser and explore!
 ## 📊 NeuraxonLife2-1M Dataset ( Regular + Full Version)
 
 **NEW**: We've released a comprehensive dataset of 1M+ evolved neural networks from our artificial life simulations!
-Upadte 12/10/25: Added A Full version to include also each full game info captured check NeuraxonLife2-1MFull_manifest.json at HuggingFace data repor for details
+Update 12/10/25: Added A Full version to include also each full game info captured check NeuraxonLife2-1MFull_manifest.json at HuggingFace data repor for details
 
 <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M"><img src="https://img.shields.io/badge/🤗%20Dataset-HuggingFace-orange"></a>
 
@@ -512,6 +512,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
