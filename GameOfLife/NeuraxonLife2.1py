@@ -1,9 +1,9 @@
-# Neuraxon Game of Life v.2.01 (Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
+# Neuraxon Game of Life v.2.02 (Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-# New features in V2.01:
-# - Added Metabolic Rate to the network parameters and calculations replacing  death by inactivity 
+# New features in V2.01:  Added Metabolic Rate to the network parameters and calculations replacing  death by inactivity 
+# New features in V2.02:  Fixed the Dopamine LTD and LTP thresholds to prevent always-on depression and always-on potentiation
 
 
 import os, sys, time, json, math, random, pathlib
@@ -252,14 +252,18 @@ class Synapse:
         self.post_trace += (-self.post_trace / self.tau_ltp + (1 if post_state == 1 else 0)) * dt
         
         da = neuromodulators.get('dopamine', 0.5)
-        da_high = 1.0 if da > self.params.dopamine_high_affinity_threshold else 0.0
-        da_low = 1.0 if da > self.params.dopamine_low_affinity_threshold else 1.0
+        # FIX v2.02: Swapped thresholds. LTP (da_high) requires High Concentration (Low Affinity Threshold > 1.0).
+        # FIX v2.02: LTD (da_low) requires Low Concentration (High Affinity Threshold > 0.01).
+        # FIX v2.02: Changed da_low 'else 1.0' to 'else 0.0' to prevent always-on depression.
+        da_high = 1.0 if da > self.params.dopamine_low_affinity_threshold else 0.0
+        da_low = 1.0 if da > self.params.dopamine_high_affinity_threshold else 0.0
         self.learning_rate_mod = 1.0 + (da_high * 0.5) + (da_low * 0.2)
         
-        # Use localized learning_rate
         if pre_state == 1 and post_state == 1:
+            # LTP now only occurs during Dopamine Surges (Reward)
             return self.learning_rate * self.learning_rate_mod * da_high * self.pre_trace
         elif pre_state == 1 and post_state == -1:
+            # LTD now occurs at Baseline levels
             return -self.learning_rate * self.learning_rate_mod * da_low * self.pre_trace_ltd
         return 0.0
     
