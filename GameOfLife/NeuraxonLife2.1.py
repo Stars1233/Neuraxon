@@ -1,9 +1,10 @@
-# Neuraxon Game of Life v.2.02 (Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
+# Neuraxon Game of Life v.2.03 (Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.01:  Added Metabolic Rate to the network parameters and calculations replacing  death by inactivity 
 # New features in V2.02:  Fixed the Dopamine LTD and LTP thresholds to prevent always-on depression and always-on potentiation
+# New features in V2.03:  Improved save/load functionality including spike history, pre/post traces, state history and activation_history 
 
 
 import os, sys, time, json, math, random, pathlib
@@ -193,7 +194,8 @@ class DendriticBranch:
             'branch_potential': self.branch_potential, 
             'plateau_potential': self.plateau_potential, 
             'branch_threshold': self.branch_threshold,
-            'plateau_decay': self.plateau_decay
+            'plateau_decay': self.plateau_decay,
+            'local_spike_history': list(self.local_spike_history) # Save spike history v 2.03
         }
 
 class Synapse:
@@ -303,7 +305,10 @@ class Synapse:
             'potential_delta_w': self.potential_delta_w,            
             'tau_fast': self.tau_fast, 'tau_slow': self.tau_slow, 'tau_meta': self.tau_meta,
             'tau_ltp': self.tau_ltp, 'tau_ltd': self.tau_ltd,
-            'learning_rate': self.learning_rate, 'plasticity_threshold': self.plasticity_threshold
+            'learning_rate': self.learning_rate, 'plasticity_threshold': self.plasticity_threshold,
+            'pre_trace': self.pre_trace,# Updated Save states in v 2.03
+        'post_trace': self.post_trace,# Updated Save states in v 2.03
+        'pre_trace_ltd': self.pre_trace_ltd# Updated Save states in v 2.03
         }
 
 class Neuraxon:
@@ -460,7 +465,9 @@ class Neuraxon:
             'firing_energy_cost': self.firing_energy_cost,
             'plasticity_energy_cost': self.plasticity_energy_cost,
             'metabolic_rate': self.metabolic_rate,
-            'recovery_rate': self.recovery_rate
+            'recovery_rate': self.recovery_rate,
+            'state_history': list(self.state_history), # Updated Save states in v 2.03
+            'autoreceptor': self.autoreceptor # Updated Save states in v 2.03
         }
 
 
@@ -820,7 +827,10 @@ class NeuraxonNetwork:
             
     def to_dict(self) -> dict:
         """Serializes the entire network state into a single dictionary."""
-        return {'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 'branching_ratio': self.branching_ratio, 'itu_circles': [c.circle_id for c in self.itu_circles]}
+        return {'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 'branching_ratio': self.branching_ratio, 
+        'itu_circles': [c.circle_id for c in self.itu_circles],
+        'activation_history': list(self.activation_history)    # Updated Save states in v 2.03
+         }
 
 
 def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
@@ -842,7 +852,7 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
                 n.phase = nd.get('phase', random.random() * 2 * math.pi)
                 n.fitness_score = nd.get('fitness_score', 0.0)
                 
-                
+                # Individualized neuron parameters
                 n.membrane_time_constant = nd.get('membrane_time_constant', params.membrane_time_constant)
                 n.firing_threshold_excitatory = nd.get('firing_threshold_excitatory', params.firing_threshold_excitatory)
                 n.firing_threshold_inhibitory = nd.get('firing_threshold_inhibitory', params.firing_threshold_inhibitory)
@@ -855,15 +865,25 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
                 n.metabolic_rate = nd.get('metabolic_rate', params.metabolic_rate)
                 n.recovery_rate = nd.get('recovery_rate', params.recovery_rate)
                 n.intrinsic_timescale = nd.get('intrinsic_timescale', n.membrane_time_constant)
+                n.adaptation = nd.get('adaptation', 0.0)
+                n.autoreceptor = nd.get('autoreceptor', 0.0)
                 
+                # ADD: Restore state_history
+                if 'state_history' in nd:
+                    n.state_history = deque(nd['state_history'], maxlen=50)
+                
+                # Dendritic branches
                 if 'dendritic_branches' in nd:
                     for i, bd in enumerate(nd['dendritic_branches']):
                         if i < len(n.dendritic_branches):
                             b = n.dendritic_branches[i]
                             b.branch_potential = bd['branch_potential']
-                            b.plateau_potential = bd['plateau_potential']                            
+                            b.plateau_potential = bd['plateau_potential']
                             b.branch_threshold = bd.get('branch_threshold', params.branch_threshold)
                             b.plateau_decay = bd.get('plateau_decay', params.plateau_decay)
+                            # ADD: Restore local_spike_history
+                            if 'local_spike_history' in bd:
+                                b.local_spike_history = deque(bd['local_spike_history'], maxlen=10)
                             
     # Apply the saved state to each neuron population.
     _apply(net.input_neurons, d['neurons']['input'], 0)
@@ -883,7 +903,8 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
         s.axonal_delay = sd.get('axonal_delay', random.uniform(0, params.max_axonal_delay))
         s.learning_rate_mod = sd.get('learning_rate_mod', 1.0)
         s.potential_delta_w = sd.get('potential_delta_w', 0.0)
-                
+        
+        # Individualized synapse parameters
         s.tau_fast = sd.get('tau_fast', params.tau_fast)
         s.tau_slow = sd.get('tau_slow', params.tau_slow)
         s.tau_meta = sd.get('tau_meta', params.tau_meta)
@@ -892,6 +913,11 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
         s.learning_rate = sd.get('learning_rate', params.learning_rate)
         s.plasticity_threshold = sd.get('plasticity_threshold', params.plasticity_threshold)
         
+        # ADD: Restore synaptic traces
+        s.pre_trace = sd.get('pre_trace', 0.0)
+        s.post_trace = sd.get('post_trace', 0.0)
+        s.pre_trace_ltd = sd.get('pre_trace_ltd', 0.0)
+        
         net.synapses.append(s)
         
     # Re-link neighbor synapses, which is necessary for the associativity rule.
@@ -904,63 +930,13 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
     net.step_count = d['step_count']
     net.total_energy_consumed = d.get('energy_consumed', 0.0)
     net.branching_ratio = d.get('branching_ratio', 1.0)
+    
+    # ADD: Restore activation_history
+    if 'activation_history' in d:
+        net.activation_history = deque(d['activation_history'], maxlen=1000)
+    
     return net
     
-def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
-    """A utility function to reconstruct a complete NeuraxonNetwork object from a dictionary."""
-    params = NetworkParameters(**d['parameters'])
-    net = NeuraxonNetwork(params)
-    
-    # Helper function to apply saved state to a list of neurons.
-    def _apply(neu_list, src_list, off=0):
-        for nd in src_list:
-            idx = nd['id'] - off
-            if 0 <= idx < len(neu_list):
-                n = neu_list[idx]
-                n.membrane_potential = nd['membrane_potential']
-                n.trinary_state = nd['trinary_state']
-                n.health = nd['health']
-                n.is_active = nd['is_active']
-                n.energy_level = nd.get('energy_level', params.energy_baseline)
-                n.phase = nd.get('phase', random.random() * 2 * math.pi)
-                n.fitness_score = nd.get('fitness_score', 0.0)
-                if 'dendritic_branches' in nd:
-                    for i, bd in enumerate(nd['dendritic_branches']):
-                        if i < len(n.dendritic_branches):
-                            n.dendritic_branches[i].branch_potential = bd['branch_potential']
-                            n.dendritic_branches[i].plateau_potential = bd['plateau_potential']
-                            
-    # Apply the saved state to each neuron population.
-    _apply(net.input_neurons, d['neurons']['input'], 0)
-    _apply(net.hidden_neurons, d['neurons']['hidden'], len(net.input_neurons))
-    _apply(net.output_neurons, d['neurons']['output'], len(net.input_neurons) + len(net.hidden_neurons))
-    
-    # Reconstruct all synapses from the saved data.
-    net.synapses = []
-    for sd in d['synapses']:
-        s = Synapse(sd['pre_id'], sd['post_id'], params)
-        s.w_fast = sd['w_fast']
-        s.w_slow = sd['w_slow']
-        s.w_meta = sd['w_meta']
-        s.is_silent = sd['is_silent']
-        s.is_modulatory = sd['is_modulatory']
-        s.integrity = sd['integrity']
-        s.axonal_delay = sd.get('axonal_delay', random.uniform(0, params.max_axonal_delay))
-        s.learning_rate_mod = sd.get('learning_rate_mod', 1.0)
-        s.potential_delta_w = sd.get('potential_delta_w', 0.0)
-        net.synapses.append(s)
-        
-    # Re-link neighbor synapses, which is necessary for the associativity rule.
-    for s in net.synapses:
-        s.neighbor_synapses = [ns for ns in net.synapses if ns.pre_id == s.pre_id and ns.post_id != s.post_id]
-        
-    # Restore the rest of the global network state.
-    net.neuromodulators = d['neuromodulators']
-    net.time = d['time']
-    net.step_count = d['step_count']
-    net.total_energy_consumed = d.get('energy_consumed', 0.0)
-    net.branching_ratio = d.get('branching_ratio', 1.0)
-    return net
 
 # --- General Utility and Helper Functions ---
 def _clamp(v, a, b): return max(a, min(b, v))
