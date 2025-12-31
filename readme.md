@@ -11,7 +11,7 @@
 </div>
 
 <br>
-New Research  2.02 and Lite version 2.0<br>
+New Research  2.03 and Lite version 2.0<br>
 Nxperience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).
 
 ### Lite Version Features, (Research edition bellow):
@@ -324,6 +324,7 @@ The hybrid creates "living neural tissue" that:
 
 * 2.01 version update: Added Metabolic Rate to the network parameters and calculations replacing  death by inactivity
 * 2.02 version update: Fixed the Dopamine LTD and LTP thresholds to prevent always-on depression and always-on potentiation
+* 2.03 version update: Improved save/load functionality including spike history, pre/post traces, state history and activation_history
 
 The **Neuraxon Game of Life 2.0 ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
 
@@ -515,6 +516,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
