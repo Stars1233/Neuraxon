@@ -12,7 +12,7 @@
 
 <br>
 New Research  2.04 and Lite version 2.0<br>
-Nxperience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).
+Nxperience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).<br>
 Jan 2nd 2025 v 2.04 Research update.
 
 ### Lite Version Features, (Research edition bellow):
@@ -518,6 +518,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
