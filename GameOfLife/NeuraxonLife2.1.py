@@ -1,11 +1,11 @@
-# Neuraxon Game of Life v.2.03 (Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
+# Neuraxon Game of Life v.2.04 (Research Version): Enhanced DataLogger with in depth dynamics and updated save states
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.01:  Added Metabolic Rate to the network parameters and calculations replacing  death by inactivity 
 # New features in V2.02:  Fixed the Dopamine LTD and LTP thresholds to prevent always-on depression and always-on potentiation
 # New features in V2.03:  Improved save/load functionality including spike history, pre/post traces, state history and activation_history 
-
+# New features in V2.04:  Increased metabolic ramp to avoid dead agents,  Added autoSave and Level 2 logging default with in depth dynamics Increases Log size by 10x aprox
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -22,6 +22,1182 @@ try:
     import pygame
 except Exception as e:
     raise RuntimeError("This program requires pygame. Install with: pip install pygame") from e
+
+
+# ============================================================================
+# DATALOGGER CLASS
+# ============================================================================
+
+class DataLogger:
+    """
+    Comprehensive data logger for validating the Neuraxon research paper.
+    
+    Level 1: Basic logging (summary statistics, final states)
+    Level 2: Detailed logging (time-series of all variables, plasticity events, etc.) Default
+    
+    Data is kept in memory during gameplay and only saved:
+    - At the end of the game (game over / all NxErs died)
+    - When user explicitly saves the game
+    - When user loads a game (saves current state first)
+    """
+    
+    def __init__(self, log_level: int = 2, max_history_length: int = 10000):
+        self.log_level = max(1, min(2, log_level))
+        self.max_history_length = max_history_length
+        self.reset()
+    
+    def reset(self):
+        """Reset all logged data."""
+        self.start_time = time.time()
+        self.game_metadata = {
+            'start_timestamp': datetime.now().isoformat(),
+            'log_level': self.log_level,
+            'version': '2.05'
+        }
+        
+        self.summary = {
+            'total_ticks': 0,
+            'total_neurons_created': 0,
+            'total_neurons_died': 0,
+            'total_synapses_created': 0,
+            'total_synapses_pruned': 0,
+            'total_plasticity_events': 0,
+            'total_ltp_events': 0,
+            'total_ltd_events': 0,
+            'peak_network_activity': 0.0,
+            'average_branching_ratio': 0.0,
+            'branching_ratio_samples': 0,
+            'neuromodulator_peaks': {
+                'dopamine': 0.0,
+                'serotonin': 0.0,
+                'acetylcholine': 0.0,
+                'norepinephrine': 0.0
+            },
+            # NEW summary stats
+            'total_silent_synapse_activations': 0,
+            'total_spontaneous_events': 0,
+            'total_dendritic_spikes': 0,
+            'total_homeostatic_adjustments': 0,
+            'peak_phase_coherence': 0.0,
+            # NEW: Updated Save states in v 2.04
+            'total_threshold_modulations': 0,
+            'total_associativity_events': 0,
+            'total_metabotropic_activations': 0,
+            'total_ionotropic_activations': 0,
+            'peak_autocorrelation_window': 0.0,
+            'mean_weight_change_rate': 0.0,
+            'total_subthreshold_integrations': 0,
+        }
+        
+        self.nxer_summary = {
+            'total_born': 0,
+            'total_died': 0,
+            'max_food_found': 0.0,
+            'max_time_lived': 0.0,
+            'max_mates': 0,
+            'max_explored': 0
+        }
+        
+        # --- Event Lists (Unconditional Init to prevent AttributeError) ---
+        self.plasticity_events = []
+        self.structural_events = []
+        self.neuron_snapshots = []
+        self.synapse_snapshots = []
+        self.nxer_events = []
+        self.itu_fitness_history = []
+        self.io_patterns = []
+        
+        self.silent_synapse_events = []
+        self.spontaneous_events = []
+        self.homeostatic_events = []
+        self.dendritic_spike_events = []
+        self.autoreceptor_events = []
+        self.neuromodulator_events = []
+        self.phase_reset_events = []
+        
+        # NEW: Additional event lists for paper validation
+        self.weight_evolution_events = []
+        self.threshold_modulation_events = []
+        self.associativity_events = []
+        self.subthreshold_events = []
+        
+        self.tracked_neuron_ids = []
+        self.neuron_time_series = {}
+        self.tracked_synapse_ids = []
+        self.synapse_time_series = {}
+        
+        self.snapshot_interval = 100
+        self.last_snapshot_tick = -1
+        self.detailed_snapshot_interval = 500
+        
+        if self.log_level >= 2:
+            self._init_level2_data()
+    
+    def _init_level2_data(self):
+        self.time_series = {
+            'ticks': [],
+            'timestamps': [],
+            'network_activity': [],
+            'branching_ratio': [],
+            'total_energy': [],
+            'average_energy': [],
+            'energy_efficiency': [],
+            'temporal_sync': [],
+            'dopamine': [],
+            'serotonin': [],
+            'acetylcholine': [],
+            'norepinephrine': [],
+            'oscillator_drive': [],
+            
+            # NEW: Oscillator components for CFC analysis
+            'oscillator_low': [],
+            'oscillator_mid': [],
+            'oscillator_high': [],
+            
+            # NEW: Cross-frequency coupling metrics
+            'phase_coherence': [],
+            'cfc_low_mid': [],
+            'cfc_mid_high': [],
+            
+            # NEW: Trinary state distributions
+            'excitatory_fraction': [],
+            'inhibitory_fraction': [],
+            'neutral_fraction': [],
+            
+            # NEW: Autoreceptor dynamics
+            'autoreceptor_mean': [],
+            'autoreceptor_std': [],
+            
+            # NEW: Adaptation dynamics
+            'adaptation_mean': [],
+            
+            # NEW: Spontaneous activity metrics
+            'spontaneous_firing_count': [],
+            'driven_firing_count': [],
+            
+            # NEW: Synapse health metrics
+            'silent_synapse_count': [],
+            'active_synapse_count': [],
+            'modulatory_synapse_count': [],
+            'mean_synapse_integrity': [],
+            
+            # NEW: Dendritic metrics (averaged across network)
+            'mean_plateau_potential': [],
+            'mean_branch_potential': [],
+            'dendritic_spike_count': [],
+            
+            # NEW: Intrinsic timescale distribution
+            'mean_intrinsic_timescale': [],
+            'timescale_heterogeneity': [],
+            
+            # NEW: Membrane potential statistics
+            'membrane_potential_mean': [],
+            'membrane_potential_std': [],
+            
+            # ============================================================
+            # NEW: Synaptic Weight Evolution
+            # ============================================================
+            # Multi-timescale weight tracking (w_fast, w_slow, w_meta)
+            'mean_w_fast': [],
+            'mean_w_slow': [],
+            'mean_w_meta': [],
+            'std_w_fast': [],
+            'std_w_slow': [],
+            'std_w_meta': [],
+            
+            # Synaptic trace dynamics
+            'mean_pre_trace': [],
+            'mean_post_trace': [],
+            'mean_pre_trace_ltd': [],
+            'std_pre_trace': [],
+            
+            # Weight change rates
+            'mean_delta_w': [],
+            'ltp_rate': [],  # LTP events per tick
+            'ltd_rate': [],  # LTD events per tick
+            
+            # ============================================================
+            # NEW: Plasticity and Associativity
+            # ============================================================
+            # Associativity contribution from neighboring synapses
+            'mean_associativity_contribution': [],
+            'associativity_event_count': [],
+            
+            # Learning rate modulation by neuromodulators
+            'mean_learning_rate_mod': [],
+            'std_learning_rate_mod': [],
+            
+            # ============================================================
+            # NEW: Self-Generated Activity / ACW
+            # ============================================================
+            # Autocorrelation Window (ACW) - critical for intrinsic timescales
+            'mean_autocorrelation_window': [],
+            'std_autocorrelation_window': [],
+            'autocorrelation_coefficient_mean': [],
+            
+            # ============================================================
+            # NEW: Threshold Modulation
+            # ============================================================
+            # Effective threshold tracking (after neuromodulation + autoreceptor)
+            'mean_threshold_excitatory_effective': [],
+            'mean_threshold_inhibitory_effective': [],
+            'threshold_modulation_by_ach': [],
+            'threshold_modulation_by_autoreceptor': [],
+            
+            # Ionotropic vs Metabotropic channel contributions
+            'ionotropic_contribution_mean': [],
+            'metabotropic_contribution_mean': [],
+            
+            # ============================================================
+            # NEW: Neuromodulator Spatial Dynamics
+            # ============================================================
+            # Modulator grid spatial statistics
+            'modulator_grid_entropy': [],
+            'modulator_grid_gradient_magnitude': [],
+            'dopamine_spatial_variance': [],
+            'serotonin_spatial_variance': [],
+            
+            # ============================================================
+            # NEW: Silent Synapse Dynamics
+            # ============================================================
+            'silent_synapse_fraction': [],
+            'silent_to_active_transitions': [],
+            'active_to_silent_transitions': [],
+            
+            # ============================================================
+            # NEW: Complex Signaling / Subthreshold
+            # ============================================================
+            'subthreshold_integration_count': [],
+            'near_threshold_fraction': [],  # Neurons close to firing
+            
+            # ============================================================
+            # NEW: Extended Oscillator Metrics
+            # ============================================================
+            # Phase-Amplitude Coupling (PAC) detailed metrics
+            'pac_theta_gamma': [],
+            'pac_delta_theta': [],
+            'mean_phase_velocity': [],
+            
+            # ============================================================
+            # NEW:  Aigarth/ITU Metrics
+            # ============================================================
+            'itu_mean_fitness': [],
+            'itu_fitness_variance': [],
+            'itu_mutation_events': [],
+            'itu_pruning_events': [],
+        }
+    
+    def set_level(self, level: int):
+        new_level = max(1, min(2, level))
+        if new_level != self.log_level:
+            self.log_level = new_level
+            if new_level >= 2 and not hasattr(self, 'time_series'):
+                self._init_level2_data()
+    
+    def log_tick(self, tick: int, network: Optional['NeuraxonNetwork'], nxers: dict = None):
+        self.summary['total_ticks'] = tick
+        if network:
+            active_neurons = [n for n in network.all_neurons if n.is_active]
+            if active_neurons:
+                activity = sum(abs(n.trinary_state) for n in active_neurons) / len(active_neurons)
+                self.summary['peak_network_activity'] = max(self.summary['peak_network_activity'], activity)
+            if network.branching_ratio > 0:
+                self.summary['average_branching_ratio'] = (
+                    (self.summary['average_branching_ratio'] * self.summary['branching_ratio_samples'] + 
+                     network.branching_ratio) / (self.summary['branching_ratio_samples'] + 1)
+                )
+                self.summary['branching_ratio_samples'] += 1
+            for mod in ['dopamine', 'serotonin', 'acetylcholine', 'norepinephrine']:
+                level = network.neuromodulators.get(mod, 0.0)
+                self.summary['neuromodulator_peaks'][mod] = max(self.summary['neuromodulator_peaks'][mod], level)
+        if self.log_level >= 2 and network:
+            self._log_tick_level2(tick, network, nxers or {})
+    
+    def _log_tick_level2(self, tick: int, network: 'NeuraxonNetwork', nxers: dict):
+        """Capture detailed time series data each tick."""
+        import numpy as np
+        import cmath
+        from scipy.stats import entropy as scipy_entropy  # May need fallback
+        
+        # Trim old data if needed
+        if len(self.time_series['ticks']) >= self.max_history_length:
+            trim_count = self.max_history_length // 10
+            for key in self.time_series:
+                if isinstance(self.time_series[key], list) and len(self.time_series[key]) > trim_count:
+                    self.time_series[key] = self.time_series[key][trim_count:]
+        
+        # Basic timing
+        self.time_series['ticks'].append(tick)
+        self.time_series['timestamps'].append(time.time() - self.start_time)
+        
+        active_neurons = [n for n in network.all_neurons if n.is_active]
+        if not active_neurons:
+            # Append zeros/defaults if no active neurons
+            for key in self.time_series:
+                if key not in ['ticks', 'timestamps']:
+                    self.time_series[key].append(0.0)
+            return
+        
+        # Get active synapses for this tick
+        active_synapses = [s for s in network.synapses if s.integrity > 0]
+        
+        # Track LTP/LTD events this tick
+        ltp_this_tick = 0
+        ltd_this_tick = 0
+
+        # === EXISTING METRICS ===
+        activity = sum(abs(n.trinary_state) for n in active_neurons) / len(active_neurons)
+        self.time_series['network_activity'].append(activity)
+        self.time_series['branching_ratio'].append(network.branching_ratio)
+        
+        energy_status = network.get_energy_status()
+        self.time_series['total_energy'].append(energy_status.get('total_energy', 0))
+        self.time_series['average_energy'].append(energy_status.get('average_energy', 0))
+        self.time_series['energy_efficiency'].append(energy_status.get('efficiency', 0))
+        self.time_series['temporal_sync'].append(energy_status.get('temporal_sync', 0))
+        
+        for mod in ['dopamine', 'serotonin', 'acetylcholine', 'norepinephrine']:
+            self.time_series[mod].append(network.neuromodulators.get(mod, 0.0))
+        
+        self.time_series['oscillator_drive'].append(network._global_oscillatory_drive())
+        
+        # === NEW: Oscillator Components (for CFC analysis) ===
+        t = network.time
+        low = math.sin(2.0 * math.pi * network.params.oscillator_low_freq * t + network.oscillator_phase_offsets[0])
+        mid = math.sin(2.0 * math.pi * network.params.oscillator_mid_freq * t + network.oscillator_phase_offsets[1])
+        high = math.sin(2.0 * math.pi * network.params.oscillator_high_freq * t + network.oscillator_phase_offsets[2])
+        self.time_series['oscillator_low'].append(low)
+        self.time_series['oscillator_mid'].append(mid)
+        self.time_series['oscillator_high'].append(high)
+        
+        # === NEW: Cross-Frequency Coupling (simplified PAC proxy) ===
+        # CFC: correlation between slow phase and fast amplitude
+        cfc_low_mid = abs(low) * abs(mid)  # Simplified PAC proxy
+        cfc_mid_high = abs(mid) * abs(high)
+        self.time_series['cfc_low_mid'].append(cfc_low_mid)
+        self.time_series['cfc_mid_high'].append(cfc_mid_high)
+        
+        # Phase coherence across neurons
+        phases = [n.phase for n in active_neurons]
+        if len(phases) >= 2:
+            complex_phases = [cmath.exp(1j * p) for p in phases]
+            phase_coherence = abs(sum(complex_phases) / len(complex_phases))
+            
+            # NEW: Log phase synchronization events (Lower threshold for detection)
+            # If coherence is moderately high (>0.4), we consider this a synchronization event
+            if phase_coherence > 0.4:
+                # Check if it wasn't already high to avoid spamming (simple hysteresis)
+                prev_coherence = self.time_series['phase_coherence'][-2] if len(self.time_series['phase_coherence']) > 1 else 0.0
+                if prev_coherence <= 0.4:
+                    self.log_phase_event(tick, "high_synchronization", phase_coherence, {'active_count': len(active_neurons)})
+        else:
+            phase_coherence = 0.0
+        self.time_series['phase_coherence'].append(phase_coherence)
+        
+        # === NEW: Trinary State Distributions ===
+        states = [n.trinary_state for n in active_neurons]
+        excitatory_frac = sum(1 for s in states if s == 1) / len(states)
+        inhibitory_frac = sum(1 for s in states if s == -1) / len(states)
+        neutral_frac = sum(1 for s in states if s == 0) / len(states)
+        self.time_series['excitatory_fraction'].append(excitatory_frac)
+        self.time_series['inhibitory_fraction'].append(inhibitory_frac)
+        self.time_series['neutral_fraction'].append(neutral_frac)
+        
+        # === NEW: Autoreceptor Dynamics ===
+        autoreceptors = [n.autoreceptor for n in active_neurons]
+        self.time_series['autoreceptor_mean'].append(np.mean(autoreceptors))
+        self.time_series['autoreceptor_std'].append(np.std(autoreceptors))
+        
+        # === NEW: Adaptation Dynamics ===
+        adaptations = [n.adaptation for n in active_neurons]
+        self.time_series['adaptation_mean'].append(np.mean(adaptations))
+        
+        # === NEW: Membrane Potential Statistics ===
+        membrane_potentials = [n.membrane_potential for n in active_neurons]
+        self.time_series['membrane_potential_mean'].append(np.mean(membrane_potentials))
+        self.time_series['membrane_potential_std'].append(np.std(membrane_potentials))
+        
+        # === NEW: Intrinsic Timescale Distribution ===
+        timescales = [n.intrinsic_timescale for n in active_neurons]
+        self.time_series['mean_intrinsic_timescale'].append(np.mean(timescales))
+        self.time_series['timescale_heterogeneity'].append(np.std(timescales) / max(0.01, np.mean(timescales)))
+        
+        # === NEW: Synapse Statistics ===
+        active_synapses = [s for s in network.synapses if s.integrity > 0]
+        silent_count = sum(1 for s in active_synapses if s.is_silent)
+        modulatory_count = sum(1 for s in active_synapses if s.is_modulatory)
+        self.time_series['silent_synapse_count'].append(silent_count)
+        self.time_series['active_synapse_count'].append(len(active_synapses) - silent_count)
+        self.time_series['modulatory_synapse_count'].append(modulatory_count)
+        
+        if active_synapses:
+            self.time_series['mean_synapse_integrity'].append(np.mean([s.integrity for s in active_synapses]))
+        else:
+            self.time_series['mean_synapse_integrity'].append(0.0)
+        
+        # === NEW: Dendritic Metrics ===
+        all_branch_potentials = []
+        all_plateau_potentials = []
+        dendritic_spike_count = 0
+        for n in active_neurons:
+            for b in n.dendritic_branches:
+                all_branch_potentials.append(b.branch_potential)
+                all_plateau_potentials.append(b.plateau_potential)
+                # Count dendritic spikes (branch potential exceeds threshold)
+                if abs(b.branch_potential) > b.branch_threshold:
+                    dendritic_spike_count += 1
+        
+        self.time_series['mean_branch_potential'].append(np.mean(all_branch_potentials) if all_branch_potentials else 0.0)
+        self.time_series['mean_plateau_potential'].append(np.mean(all_plateau_potentials) if all_plateau_potentials else 0.0)
+        self.time_series['dendritic_spike_count'].append(dendritic_spike_count)
+        
+        # === NEW: Spontaneous vs Driven Firing (estimated) ===
+        # This is tracked via log_spontaneous_event calls from the Neuraxon class
+        # Here we just append placeholders that get updated
+        self.time_series['spontaneous_firing_count'].append(0)  # Will be incremented by events
+        self.time_series['driven_firing_count'].append(0)
+        
+        # ============================================================
+        # NEW: PAPER SECTION 3 - Synaptic Weight Evolution
+        # ============================================================
+        if active_synapses:
+            # Multi-timescale weights
+            w_fast_vals = [s.w_fast for s in active_synapses]
+            w_slow_vals = [s.w_slow for s in active_synapses]
+            w_meta_vals = [s.w_meta for s in active_synapses]
+            
+            self.time_series['mean_w_fast'].append(np.mean(w_fast_vals))
+            self.time_series['mean_w_slow'].append(np.mean(w_slow_vals))
+            self.time_series['mean_w_meta'].append(np.mean(w_meta_vals))
+            self.time_series['std_w_fast'].append(np.std(w_fast_vals))
+            self.time_series['std_w_slow'].append(np.std(w_slow_vals))
+            self.time_series['std_w_meta'].append(np.std(w_meta_vals))
+            
+            # Synaptic traces
+            pre_traces = [s.pre_trace for s in active_synapses]
+            post_traces = [s.post_trace for s in active_synapses]
+            pre_traces_ltd = [s.pre_trace_ltd for s in active_synapses]
+            
+            self.time_series['mean_pre_trace'].append(np.mean(pre_traces))
+            self.time_series['mean_post_trace'].append(np.mean(post_traces))
+            self.time_series['mean_pre_trace_ltd'].append(np.mean(pre_traces_ltd))
+            self.time_series['std_pre_trace'].append(np.std(pre_traces))
+            
+            # Weight change rates (from potential_delta_w)
+            delta_w_vals = [abs(s.potential_delta_w) for s in active_synapses]
+            self.time_series['mean_delta_w'].append(np.mean(delta_w_vals))
+            
+            # Learning rate modulation
+            lr_mods = [s.learning_rate_mod for s in active_synapses]
+            self.time_series['mean_learning_rate_mod'].append(np.mean(lr_mods))
+            self.time_series['std_learning_rate_mod'].append(np.std(lr_mods))
+            
+            # Ionotropic vs Metabotropic contributions
+            ionotropic_contrib = [abs(s.w_fast) + abs(s.w_slow) for s in active_synapses if not s.is_modulatory]
+            metabotropic_contrib = [abs(s.w_meta) for s in active_synapses if s.is_modulatory]
+            
+            self.time_series['ionotropic_contribution_mean'].append(
+                np.mean(ionotropic_contrib) if ionotropic_contrib else 0.0)
+            self.time_series['metabotropic_contribution_mean'].append(
+                np.mean(metabotropic_contrib) if metabotropic_contrib else 0.0)
+        else:
+            # Append zeros for all synapse-related metrics
+            for key in ['mean_w_fast', 'mean_w_slow', 'mean_w_meta', 
+                       'std_w_fast', 'std_w_slow', 'std_w_meta',
+                       'mean_pre_trace', 'mean_post_trace', 'mean_pre_trace_ltd', 'std_pre_trace',
+                       'mean_delta_w', 'mean_learning_rate_mod', 'std_learning_rate_mod',
+                       'ionotropic_contribution_mean', 'metabotropic_contribution_mean']:
+                self.time_series[key].append(0.0)
+        
+        # ============================================================
+        # NEW: PAPER SECTION 4 - Plasticity and Associativity
+        # ============================================================
+        if active_synapses:
+            # Calculate associativity contributions
+            associativity_contribs = []
+            for s in active_synapses:
+                if s.neighbor_synapses:
+                    neighbor_deltas = [ns.potential_delta_w for ns in s.neighbor_synapses[:3]]
+                    if neighbor_deltas:
+                        contrib = network.params.associativity_strength * sum(
+                            dw / (i + 1) for i, dw in enumerate(neighbor_deltas))
+                        associativity_contribs.append(abs(contrib))
+            
+            self.time_series['mean_associativity_contribution'].append(
+                np.mean(associativity_contribs) if associativity_contribs else 0.0)
+            self.time_series['associativity_event_count'].append(
+                sum(1 for c in associativity_contribs if c > 0.001))
+        else:
+            self.time_series['mean_associativity_contribution'].append(0.0)
+            self.time_series['associativity_event_count'].append(0)
+        
+        # LTP/LTD rates (will be updated by plasticity event logging)
+        self.time_series['ltp_rate'].append(0)
+        self.time_series['ltd_rate'].append(0)
+        
+        # ============================================================
+        # NEW: PAPER SECTION 6 - Autocorrelation Windows (ACW)
+        # ============================================================
+        acw_estimates = []
+        autocorr_coeffs = []
+        
+        for n in active_neurons:
+            if len(n.state_history) >= 10:
+                states = list(n.state_history)
+                try:
+                    # Compute lag-1 autocorrelation
+                    autocorr = np.corrcoef(states[:-1], states[1:])[0, 1]
+                    if not np.isnan(autocorr):
+                        autocorr_coeffs.append(autocorr)
+                        # ACW estimate: timescale weighted by autocorrelation strength
+                        # Higher autocorr = longer memory window
+                        acw = n.intrinsic_timescale * (1.0 + abs(autocorr))
+                        acw_estimates.append(acw)
+                except:
+                    pass
+        
+        if acw_estimates:
+            mean_acw = np.mean(acw_estimates)
+            self.time_series['mean_autocorrelation_window'].append(mean_acw)
+            self.time_series['std_autocorrelation_window'].append(np.std(acw_estimates))
+            self.summary['peak_autocorrelation_window'] = max(
+                self.summary['peak_autocorrelation_window'], mean_acw)
+        else:
+            self.time_series['mean_autocorrelation_window'].append(0.0)
+            self.time_series['std_autocorrelation_window'].append(0.0)
+        
+        self.time_series['autocorrelation_coefficient_mean'].append(
+            np.mean(autocorr_coeffs) if autocorr_coeffs else 0.0)
+        
+        # ============================================================
+        # NEW: PAPER SECTIONS 1 & 3 - Threshold Modulation
+        # ============================================================
+        ach = network.neuromodulators.get('acetylcholine', 0.5)
+        
+        theta_exc_effectives = []
+        theta_inh_effectives = []
+        ach_mods = []
+        autoreceptor_mods = []
+        
+        for n in active_neurons:
+            # Calculate effective thresholds as done in neuron update
+            threshold_mod = (ach - 0.5) * 0.5
+            ach_mods.append(threshold_mod)
+            
+            autoreceptor_mod = -0.1 * n.autoreceptor
+            autoreceptor_mods.append(autoreceptor_mod)
+            
+            theta_exc_eff = n.firing_threshold_excitatory - threshold_mod + autoreceptor_mod
+            theta_inh_eff = n.firing_threshold_inhibitory - threshold_mod - autoreceptor_mod
+            
+            theta_exc_effectives.append(theta_exc_eff)
+            theta_inh_effectives.append(theta_inh_eff)
+        
+        self.time_series['mean_threshold_excitatory_effective'].append(np.mean(theta_exc_effectives))
+        self.time_series['mean_threshold_inhibitory_effective'].append(np.mean(theta_inh_effectives))
+        self.time_series['threshold_modulation_by_ach'].append(np.mean(ach_mods))
+        self.time_series['threshold_modulation_by_autoreceptor'].append(np.mean(autoreceptor_mods))
+        
+        # ============================================================
+        # NEW: PAPER SECTION 1 - Neuromodulator Spatial Dynamics
+        # ============================================================
+        try:
+            # Grid entropy (measure of spatial heterogeneity)
+            grid_flat = network.modulator_grid.flatten()
+            grid_normalized = (grid_flat - grid_flat.min()) / (grid_flat.max() - grid_flat.min() + 1e-10)
+            # Simple entropy approximation using histogram
+            hist, _ = np.histogram(grid_normalized, bins=20, density=True)
+            hist = hist[hist > 0]  # Remove zeros
+            grid_entropy = -np.sum(hist * np.log(hist + 1e-10)) / np.log(20)  # Normalize
+            self.time_series['modulator_grid_entropy'].append(grid_entropy)
+            
+            # Spatial gradient magnitude
+            grad_y = np.diff(network.modulator_grid, axis=0)
+            grad_x = np.diff(network.modulator_grid, axis=1)
+            grad_magnitude = np.sqrt(np.mean(grad_y**2) + np.mean(grad_x**2))
+            self.time_series['modulator_grid_gradient_magnitude'].append(grad_magnitude)
+            
+            # Per-modulator spatial variance
+            self.time_series['dopamine_spatial_variance'].append(
+                np.var(network.modulator_grid[:, :, 0]))
+            self.time_series['serotonin_spatial_variance'].append(
+                np.var(network.modulator_grid[:, :, 1]))
+        except Exception:
+            self.time_series['modulator_grid_entropy'].append(0.0)
+            self.time_series['modulator_grid_gradient_magnitude'].append(0.0)
+            self.time_series['dopamine_spatial_variance'].append(0.0)
+            self.time_series['serotonin_spatial_variance'].append(0.0)
+        
+        # ============================================================
+        # NEW: PAPER SECTION 3 - Silent Synapse Dynamics
+        # ============================================================
+        if active_synapses:
+            silent_count = sum(1 for s in active_synapses if s.is_silent)
+            silent_fraction = silent_count / len(active_synapses) if active_synapses else 0.0
+            self.time_series['silent_synapse_fraction'].append(silent_fraction)
+        else:
+            self.time_series['silent_synapse_fraction'].append(0.0)
+        
+        # Transition counters (reset each tick, updated by events)
+        self.time_series['silent_to_active_transitions'].append(0)
+        self.time_series['active_to_silent_transitions'].append(0)
+        
+        # ============================================================
+        # NEW: PAPER SECTION 5 - Subthreshold Integration
+        # ============================================================
+        subthreshold_count = 0
+        near_threshold_count = 0
+        
+        for n in active_neurons:
+            # Check if neuron is in subthreshold state but receiving input
+            if n.trinary_state == 0:
+                theta_exc = n.firing_threshold_excitatory
+                theta_inh = n.firing_threshold_inhibitory
+                
+                # Near threshold: within 20% of either threshold
+                if n.membrane_potential > theta_exc * 0.8 or n.membrane_potential < theta_inh * 0.8:
+                    near_threshold_count += 1
+                    subthreshold_count += 1
+        
+        self.time_series['subthreshold_integration_count'].append(subthreshold_count)
+        self.time_series['near_threshold_fraction'].append(
+            near_threshold_count / len(active_neurons) if active_neurons else 0.0)
+        
+        # ============================================================
+        # NEW: PAPER SECTION 7 - Extended Oscillator/PAC Metrics
+        # ============================================================
+        t = network.time
+        
+        # Phase-Amplitude Coupling variants
+        delta = math.sin(2.0 * math.pi * 0.02 * t)  # ~0.02 Hz delta
+        theta_osc = math.sin(2.0 * math.pi * 0.08 * t)  # ~8 Hz theta proxy
+        gamma = math.sin(2.0 * math.pi * 5.0 * t)  # ~40 Hz gamma proxy
+        
+        # PAC: phase of slow modulates amplitude of fast
+        pac_theta_gamma = abs(theta_osc) * abs(gamma)
+        pac_delta_theta = abs(delta) * abs(theta_osc)
+        
+        self.time_series['pac_theta_gamma'].append(pac_theta_gamma)
+        self.time_series['pac_delta_theta'].append(pac_delta_theta)
+        
+        # Mean phase velocity across neurons
+        if len(active_neurons) >= 2:
+            phase_velocities = [n.natural_frequency * 2 * math.pi for n in active_neurons]
+            self.time_series['mean_phase_velocity'].append(np.mean(phase_velocities))
+        else:
+            self.time_series['mean_phase_velocity'].append(0.0)
+        
+        # ============================================================
+        # NEW: PAPER SECTION 8 - ITU/Aigarth Metrics
+        # ============================================================
+        if network.itu_circles:
+            fitness_vals = []
+            for circle in network.itu_circles:
+                if circle.fitness_history:
+                    fitness_vals.append(circle.fitness_history[-1])
+            
+            if fitness_vals:
+                self.time_series['itu_mean_fitness'].append(np.mean(fitness_vals))
+                self.time_series['itu_fitness_variance'].append(np.var(fitness_vals))
+            else:
+                self.time_series['itu_mean_fitness'].append(0.0)
+                self.time_series['itu_fitness_variance'].append(0.0)
+        else:
+            self.time_series['itu_mean_fitness'].append(0.0)
+            self.time_series['itu_fitness_variance'].append(0.0)
+        
+        # Mutation/pruning counters (reset each tick)
+        self.time_series['itu_mutation_events'].append(0)
+        self.time_series['itu_pruning_events'].append(0)
+        
+        # Take snapshots at intervals
+        if tick - self.last_snapshot_tick >= self.snapshot_interval:
+            self._take_snapshot(tick, network, nxers)
+            self.last_snapshot_tick = tick
+    
+    def _take_snapshot(self, tick: int, network: 'NeuraxonNetwork', nxers: dict):
+        """Take detailed snapshots at intervals."""
+        
+        # Existing neuron snapshot
+        neuron_states = {}
+        for n in network.all_neurons:
+            neuron_states[n.id] = {
+                'trinary_state': n.trinary_state,
+                'membrane_potential': n.membrane_potential,
+                'adaptation': n.adaptation,
+                'autoreceptor': n.autoreceptor,  # NEW
+                'health': n.health,
+                'energy_level': n.energy_level,
+                'phase': n.phase,
+                'is_active': n.is_active,
+                'intrinsic_timescale': n.intrinsic_timescale,
+                # NEW: Dendritic branch details
+                'dendritic_branches': [{
+                    'branch_id': b.branch_id,
+                    'branch_potential': b.branch_potential,
+                    'plateau_potential': b.plateau_potential,
+                    'branch_threshold': b.branch_threshold,
+                    'local_ca_influx': b.get_local_ca_influx()
+                } for b in n.dendritic_branches]
+            }
+        self.neuron_snapshots.append({'tick': tick, 'neuron_states': neuron_states})
+        
+        # Existing synapse snapshot (sample)
+        synapse_weights = {}
+        sample_synapses = network.synapses[:100] if len(network.synapses) > 100 else network.synapses
+        for s in sample_synapses:
+            synapse_weights[(s.pre_id, s.post_id)] = {
+                'w_fast': s.w_fast,
+                'w_slow': s.w_slow,
+                'w_meta': s.w_meta,
+                'integrity': s.integrity,
+                'pre_trace': s.pre_trace,
+                'post_trace': s.post_trace,
+                'is_silent': s.is_silent,       # NEW
+                'is_modulatory': s.is_modulatory, # NEW
+                'tau_fast': s.tau_fast,          # NEW
+                'tau_slow': s.tau_slow,          # NEW
+                'tau_meta': s.tau_meta,          # NEW
+                'learning_rate': s.learning_rate,  # NEW: Individual synapse learning rate
+                'plasticity_threshold': s.plasticity_threshold,  # NEW
+                'potential_delta_w': s.potential_delta_w,  # NEW: Current weight change
+                'neighbor_count': len(s.neighbor_synapses),  # NEW: For associativity analysis
+            }
+        self.synapse_snapshots.append({'tick': tick, 'synapse_weights': synapse_weights})
+        for circle in network.itu_circles:
+            if circle.fitness_history:
+                self.itu_fitness_history.append({
+                    'tick': tick,
+                    'circle_id': circle.circle_id,
+                    'fitness': circle.fitness_history[-1]
+                })
+    
+    def log_plasticity_event(self, tick: int, event_type: str, pre_id: int, post_id: int, 
+                             delta_w: float, details: dict = None):
+        self.summary['total_plasticity_events'] += 1
+        if event_type == 'LTP':
+            self.summary['total_ltp_events'] += 1
+            # Update tick-level LTP rate
+            if self.log_level >= 2 and self.time_series['ltp_rate']:
+                self.time_series['ltp_rate'][-1] += 1
+        elif event_type == 'LTD':
+            self.summary['total_ltd_events'] += 1
+            # Update tick-level LTD rate
+            if self.log_level >= 2 and self.time_series['ltd_rate']:
+                self.time_series['ltd_rate'][-1] += 1
+        
+        if self.log_level >= 2:
+            self.plasticity_events.append({
+                'tick': tick,
+                'type': event_type,
+                'pre_id': pre_id,
+                'post_id': post_id,
+                'delta_w': delta_w,
+                'details': details or {}
+            })
+    
+    # NEW: Event Logging Methods
+    def log_silent_synapse_event(self, tick: int, pre_id: int, post_id: int, 
+                                 became_active: bool, trigger: str = "unknown"):
+        """Log when a silent synapse becomes active or vice versa."""
+        if self.log_level >= 2:
+            self.silent_synapse_events.append({
+                'tick': tick,
+                'pre_id': pre_id,
+                'post_id': post_id,
+                'became_active': became_active,
+                'trigger': trigger
+            })
+            # Update transition counters
+            if became_active:
+                if self.time_series['silent_to_active_transitions']:
+                    self.time_series['silent_to_active_transitions'][-1] += 1
+            else:
+                if self.time_series['active_to_silent_transitions']:
+                    self.time_series['active_to_silent_transitions'][-1] += 1
+
+    def log_spontaneous_event(self, tick: int, neuron_id: int, membrane_potential: float):
+        """Log spontaneous firing events (not driven by synaptic input)."""
+        if self.log_level >= 2:
+            self.spontaneous_events.append({
+                'tick': tick,
+                'neuron_id': neuron_id,
+                'membrane_potential': membrane_potential
+            })
+            if self.time_series['spontaneous_firing_count']:
+                self.time_series['spontaneous_firing_count'][-1] += 1
+
+    def log_driven_firing(self, tick: int):
+        """Increment driven firing counter."""
+        if self.log_level >= 2 and self.time_series['driven_firing_count']:
+            self.time_series['driven_firing_count'][-1] += 1
+
+    def log_homeostatic_event(self, tick: int, neuron_id: int, old_threshold: float, 
+                              new_threshold: float, activity_level: float):
+        """Log homeostatic plasticity threshold adjustments."""
+        if self.log_level >= 2:
+            self.summary['total_homeostatic_adjustments'] += 1
+            self.homeostatic_events.append({
+                'tick': tick,
+                'neuron_id': neuron_id,
+                'old_threshold': old_threshold,
+                'new_threshold': new_threshold,
+                'activity_level': activity_level,
+                'direction': 'increased' if new_threshold > old_threshold else 'decreased'
+            })
+
+    def log_dendritic_spike_event(self, tick: int, neuron_id: int, branch_id: int,
+                                   branch_potential: float, plateau_potential: float,
+                                   ca_influx: float):
+        """Log local dendritic spike events."""
+        if self.log_level >= 2:
+            self.summary['total_dendritic_spikes'] += 1
+            self.dendritic_spike_events.append({
+                'tick': tick,
+                'neuron_id': neuron_id,
+                'branch_id': branch_id,
+                'branch_potential': branch_potential,
+                'plateau_potential': plateau_potential,
+                'ca_influx': ca_influx
+            })
+
+    def log_autoreceptor_event(self, tick: int, neuron_id: int, autoreceptor_value: float,
+                               threshold_effect: float):
+        """Log significant autoreceptor modulation events."""
+        if self.log_level >= 2:
+            self.autoreceptor_events.append({
+                'tick': tick,
+                'neuron_id': neuron_id,
+                'autoreceptor_value': autoreceptor_value,
+                'threshold_effect': threshold_effect
+            })
+
+    def log_neuromodulator_event(self, tick: int, modulator: str, level: float,
+                                  crossed_threshold: str, effect: str):
+        """Log neuromodulator threshold crossings (high/low affinity)."""
+        if self.log_level >= 2:
+            self.neuromodulator_events.append({
+                'tick': tick,
+                'modulator': modulator,
+                'level': level,
+                'crossed_threshold': crossed_threshold,
+                'effect': effect
+            })
+
+    def log_phase_event(self, tick: int, event_type: str, phase_coherence: float,
+                        details: dict = None):
+        """Log phase synchronization events."""
+        if self.log_level >= 2:
+            self.phase_reset_events.append({
+                'tick': tick,
+                'event_type': event_type,
+                'phase_coherence': phase_coherence,
+                'details': details or {}
+            })
+            # Update peak coherence
+            self.summary['peak_phase_coherence'] = max(
+                self.summary['peak_phase_coherence'], phase_coherence)
+    
+    # ============================================================
+    # NEW: Additional Event Logging Methods for Paper Validation
+    # ============================================================
+    
+    def log_weight_evolution_event(self, tick: int, synapse_pre_id: int, synapse_post_id: int,
+                                    w_fast_old: float, w_fast_new: float,
+                                    w_slow_old: float, w_slow_new: float,
+                                    w_meta_old: float, w_meta_new: float):
+        """Log significant weight changes across all three timescales."""
+        if self.log_level >= 2:
+            self.weight_evolution_events.append({
+                'tick': tick,
+                'pre_id': synapse_pre_id,
+                'post_id': synapse_post_id,
+                'w_fast_delta': w_fast_new - w_fast_old,
+                'w_slow_delta': w_slow_new - w_slow_old,
+                'w_meta_delta': w_meta_new - w_meta_old
+            })
+    
+    def log_threshold_modulation_event(self, tick: int, neuron_id: int,
+                                        base_threshold: float, effective_threshold: float,
+                                        ach_contribution: float, autoreceptor_contribution: float):
+        """Log threshold modulation events (Paper Section 1)."""
+        if self.log_level >= 2:
+            self.summary['total_threshold_modulations'] += 1
+            self.threshold_modulation_events.append({
+                'tick': tick,
+                'neuron_id': neuron_id,
+                'base_threshold': base_threshold,
+                'effective_threshold': effective_threshold,
+                'ach_contribution': ach_contribution,
+                'autoreceptor_contribution': autoreceptor_contribution,
+                'total_modulation': effective_threshold - base_threshold
+            })
+    
+    def log_associativity_event(self, tick: int, synapse_pre_id: int, synapse_post_id: int,
+                                 own_delta_w: float, neighbor_contribution: float,
+                                 final_delta_w: float):
+        """Log associativity plasticity events (Paper Section 4 equation)."""
+        if self.log_level >= 2:
+            self.summary['total_associativity_events'] += 1
+            self.associativity_events.append({
+                'tick': tick,
+                'pre_id': synapse_pre_id,
+                'post_id': synapse_post_id,
+                'own_delta_w': own_delta_w,
+                'neighbor_contribution': neighbor_contribution,
+                'final_delta_w': final_delta_w,
+                'amplification_factor': final_delta_w / own_delta_w if own_delta_w != 0 else 0.0
+            })
+    
+    def log_subthreshold_event(self, tick: int, neuron_id: int, membrane_potential: float,
+                                threshold: float, distance_to_threshold: float):
+        """Log subthreshold integration events (Paper Section 5)."""
+        if self.log_level >= 2:
+            self.summary['total_subthreshold_integrations'] += 1
+            self.subthreshold_events.append({
+                'tick': tick,
+                'neuron_id': neuron_id,
+                'membrane_potential': membrane_potential,
+                'threshold': threshold,
+                'distance_to_threshold': distance_to_threshold,
+                'fraction_of_threshold': membrane_potential / threshold if threshold != 0 else 0.0
+            })
+    
+    def log_itu_evolution_event(self, tick: int, circle_id: int, event_type: str,
+                                 fitness_before: float, fitness_after: float,
+                                 neurons_affected: int):
+        """Log ITU/Aigarth evolution events (Paper Section 8)."""
+        if self.log_level >= 2:
+            if event_type == 'mutation':
+                if self.time_series['itu_mutation_events']:
+                    self.time_series['itu_mutation_events'][-1] += 1
+            elif event_type == 'pruning':
+                if self.time_series['itu_pruning_events']:
+                    self.time_series['itu_pruning_events'][-1] += 1
+    
+    def get_event_lists(self) -> dict:
+        """Helper to return references to all event lists."""
+        return {
+            'silent_synapse_events': self.silent_synapse_events,
+            'spontaneous_events': self.spontaneous_events,
+            'homeostatic_events': self.homeostatic_events,
+            'dendritic_spike_events': self.dendritic_spike_events,
+            'autoreceptor_events': self.autoreceptor_events,
+            'neuromodulator_events': self.neuromodulator_events,
+            'phase_reset_events': self.phase_reset_events,
+            # NEW event lists
+            'weight_evolution_events': self.weight_evolution_events,
+            'threshold_modulation_events': self.threshold_modulation_events,
+            'associativity_events': self.associativity_events,
+            'subthreshold_events': self.subthreshold_events,
+        }
+
+    def clear_events(self):
+        """Clears transient event lists (used in worker processes)."""
+        for lst in self.get_event_lists().values():
+            lst.clear()
+
+    def merge_events(self, remote_events: dict):
+        """Merges events from a worker process into the main logger."""
+        local_lists = self.get_event_lists()
+        for key, events in remote_events.items():
+            if key in local_lists and events:
+                local_lists[key].extend(events)
+
+    def log_structural_event(self, tick: int, event_type: str, entity_id: int, details: dict = None):
+        if event_type == 'synapse_created':
+            self.summary['total_synapses_created'] += 1
+        elif event_type == 'synapse_pruned':
+            self.summary['total_synapses_pruned'] += 1
+        elif event_type == 'neuron_created':
+            self.summary['total_neurons_created'] += 1
+        elif event_type == 'neuron_died':
+            self.summary['total_neurons_died'] += 1
+        if self.log_level >= 2:
+            self.structural_events.append({
+                'tick': tick,
+                'type': event_type,
+                'entity_id': entity_id,
+                'details': details or {}
+            })
+    
+    def log_nxer_event(self, tick: int, event_type: str, nxer_id: int, details: dict = None):
+        if event_type == 'born':
+            self.nxer_summary['total_born'] += 1
+        elif event_type == 'died':
+            self.nxer_summary['total_died'] += 1
+        if self.log_level >= 2:
+            self.nxer_events.append({
+                'tick': tick,
+                'type': event_type,
+                'nxer_id': nxer_id,
+                'details': details or {}
+            })
+    
+    def log_io_pattern(self, tick: int, nxer_id: int, inputs: tuple, outputs: tuple):
+        if self.log_level >= 2:
+            if len(self.io_patterns) >= self.max_history_length:
+                self.io_patterns = self.io_patterns[self.max_history_length // 10:]
+            self.io_patterns.append({
+                'tick': tick,
+                'nxer_id': nxer_id,
+                'inputs': list(inputs),
+                'outputs': list(outputs)
+            })
+    
+    def update_nxer_stats(self, nxer: 'NxEr'):
+        self.nxer_summary['max_food_found'] = max(self.nxer_summary['max_food_found'], nxer.stats.food_found)
+        self.nxer_summary['max_time_lived'] = max(self.nxer_summary['max_time_lived'], nxer.stats.time_lived_s)
+        self.nxer_summary['max_mates'] = max(self.nxer_summary['max_mates'], nxer.stats.mates_performed)
+        self.nxer_summary['max_explored'] = max(self.nxer_summary['max_explored'], nxer.stats.explored)
+    
+    def to_dict(self) -> dict:
+        """Serialize all logged data to a dictionary."""
+        self.game_metadata['end_timestamp'] = datetime.now().isoformat()
+        self.game_metadata['duration_seconds'] = time.time() - self.start_time
+        
+        data = {
+            'metadata': self.game_metadata,
+            'summary': self.summary,
+            'nxer_summary': self.nxer_summary
+        }
+        
+        if self.log_level >= 2:
+            # Serialize synapse snapshots with string keys
+            serializable_synapse_snapshots = []
+            for snapshot in self.synapse_snapshots:
+                serializable_weights = {}
+                for (pre, post), weights in snapshot.get('synapse_weights', {}).items():
+                    serializable_weights[f"{pre}_{post}"] = weights
+                serializable_synapse_snapshots.append({
+                    'tick': snapshot['tick'],
+                    'synapse_weights': serializable_weights
+                })
+            
+            data['level2'] = {
+                # Existing
+                'time_series': self.time_series,
+                'plasticity_events': self.plasticity_events[-1000:],
+                'structural_events': self.structural_events[-500:],
+                'neuron_snapshots': self.neuron_snapshots[-50:],
+                'synapse_snapshots': serializable_synapse_snapshots[-50:],
+                'nxer_events': self.nxer_events[-500:],
+                'itu_fitness_history': self.itu_fitness_history[-200:],
+                'io_patterns': self.io_patterns[-500:],
+                
+                # NEW event logs
+                'silent_synapse_events': self.silent_synapse_events[-200:],
+                'spontaneous_events': self.spontaneous_events[-500:],
+                'homeostatic_events': self.homeostatic_events[-200:],
+                'dendritic_spike_events': self.dendritic_spike_events[-500:],
+                'autoreceptor_events': self.autoreceptor_events[-200:],
+                'neuromodulator_events': self.neuromodulator_events[-300:],
+                'phase_reset_events': self.phase_reset_events[-200:],
+                
+                # NEW event logs
+                'weight_evolution_events': self.weight_evolution_events[-500:],
+                'threshold_modulation_events': self.threshold_modulation_events[-300:],
+                'associativity_events': self.associativity_events[-300:],
+                'subthreshold_events': self.subthreshold_events[-300:],
+            }
+        return data
+    
+    def save_to_file(self, filepath: str):
+        data = self.to_dict()
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+        print(f"[DATALOGGER] Saved to {filepath}")
+
+
+# ============================================================
+# NEW: Helper function to generate paper validation report
+# ============================================================
+def generate_paper_validation_report(logger: DataLogger) -> dict:
+    """
+    Generate a structured report mapping logged data to paper sections.
+    Useful for validating the implementation against the Neuraxon paper.
+    """
+    report = {
+        'paper_section_1_trinary_neuromodulation': {
+            'trinary_state_distributions': {
+                'excitatory_samples': len([x for x in logger.time_series.get('excitatory_fraction', []) if x > 0]),
+                'inhibitory_samples': len([x for x in logger.time_series.get('inhibitory_fraction', []) if x > 0]),
+                'neutral_samples': len([x for x in logger.time_series.get('neutral_fraction', []) if x > 0]),
+            },
+            'neuromodulator_dynamics': {
+                mod: {
+                    'peak': logger.summary['neuromodulator_peaks'].get(mod, 0),
+                    'events_logged': len([e for e in logger.neuromodulator_events if e.get('modulator') == mod])
+                } for mod in ['dopamine', 'serotonin', 'acetylcholine', 'norepinephrine']
+            },
+            'threshold_modulation_events': logger.summary.get('total_threshold_modulations', 0),
+        },
+        'paper_section_2_temporal_dynamics': {
+            'total_ticks': logger.summary['total_ticks'],
+            'timestamps_logged': len(logger.time_series.get('timestamps', [])),
+            'oscillator_components_tracked': all(
+                len(logger.time_series.get(k, [])) > 0 
+                for k in ['oscillator_low', 'oscillator_mid', 'oscillator_high']
+            ),
+        },
+        'paper_section_3_synaptic_computation': {
+            'weight_timescales_tracked': {
+                'w_fast': len(logger.time_series.get('mean_w_fast', [])),
+                'w_slow': len(logger.time_series.get('mean_w_slow', [])),
+                'w_meta': len(logger.time_series.get('mean_w_meta', [])),
+            },
+            'synaptic_trace_dynamics': {
+                'pre_trace': len(logger.time_series.get('mean_pre_trace', [])),
+                'post_trace': len(logger.time_series.get('mean_post_trace', [])),
+            },
+            'ionotropic_vs_metabotropic': {
+                'ionotropic_samples': len(logger.time_series.get('ionotropic_contribution_mean', [])),
+                'metabotropic_samples': len(logger.time_series.get('metabotropic_contribution_mean', [])),
+            },
+        },
+        'paper_section_4_plasticity': {
+            'total_plasticity_events': logger.summary['total_plasticity_events'],
+            'ltp_events': logger.summary['total_ltp_events'],
+            'ltd_events': logger.summary['total_ltd_events'],
+            'associativity_events': logger.summary.get('total_associativity_events', 0),
+            'homeostatic_adjustments': logger.summary.get('total_homeostatic_adjustments', 0),
+        },
+        'paper_section_5_complex_signaling': {
+            'silent_synapse_activations': logger.summary.get('total_silent_synapse_activations', 0),
+            'subthreshold_integrations': logger.summary.get('total_subthreshold_integrations', 0),
+        },
+        'paper_section_6_self_generated_activity': {
+            'spontaneous_events': logger.summary.get('total_spontaneous_events', 0),
+            'autocorrelation_window_tracked': len(logger.time_series.get('mean_autocorrelation_window', [])) > 0,
+            'peak_acw': logger.summary.get('peak_autocorrelation_window', 0),
+        },
+        'paper_section_7_synchronization': {
+            'phase_coherence_tracked': len(logger.time_series.get('phase_coherence', [])),
+            'peak_coherence': logger.summary.get('peak_phase_coherence', 0),
+            'cfc_metrics_tracked': all(
+                len(logger.time_series.get(k, [])) > 0 
+                for k in ['cfc_low_mid', 'cfc_mid_high', 'pac_theta_gamma']
+            ),
+        },
+        'paper_section_8_aigarth_hybrid': {
+            'itu_fitness_tracked': len(logger.time_series.get('itu_mean_fitness', [])),
+            'itu_fitness_history': len(logger.itu_fitness_history),
+        },
+    }
+    return report
+
+
+# Global data logger instance
+_data_logger: Optional[DataLogger] = None
+
+def get_data_logger() -> DataLogger:
+    global _data_logger
+    if _data_logger is None:
+        _data_logger = DataLogger(log_level=1)
+    return _data_logger
+
+def set_data_logger_level(level: int):
+    get_data_logger().set_level(level)
 
 @dataclass
 class NetworkParameters:
@@ -235,6 +1411,11 @@ class Synapse:
         self.neighbor_synapses = []
         self.potential_delta_w = 0.0
         self.synapse_type = self._determine_type()
+        
+        # NEW: Track previous weights for evolution logging
+        self._prev_w_fast = self.w_fast
+        self._prev_w_slow = self.w_slow
+        self._prev_w_meta = self.w_meta
     
     def _determine_type(self) -> SynapseType:
         if self.is_silent: return SynapseType.SILENT
@@ -261,18 +1442,56 @@ class Synapse:
         da_low = 1.0 if da > self.params.dopamine_high_affinity_threshold else 0.0
         self.learning_rate_mod = 1.0 + (da_high * 0.5) + (da_low * 0.2)
         
+        # NEW: Log threshold crossings
+        logger = get_data_logger()
+        if logger.log_level >= 2:
+            if da_high > 0 and pre_state == 1 and post_state == 1:
+                logger.log_neuromodulator_event(
+                    tick=0,
+                    modulator='dopamine',
+                    level=da,
+                    crossed_threshold='low_affinity',
+                    effect='ltp_enabled'
+                )
+            if da_low > 0 and pre_state == 1 and post_state == -1:
+                logger.log_neuromodulator_event(
+                    tick=0,
+                    modulator='dopamine', 
+                    level=da,
+                    crossed_threshold='high_affinity',
+                    effect='ltd_enabled'
+                )
+        
+        # Track for weight evolution logging
+        self._pending_delta_w = 0.0
+        
         if pre_state == 1 and post_state == 1:
             # LTP now only occurs during Dopamine Surges (Reward)
-            return self.learning_rate * self.learning_rate_mod * da_high * self.pre_trace
+            delta = self.learning_rate * self.learning_rate_mod * da_high * self.pre_trace
+            self._pending_delta_w = delta
+            return delta
         elif pre_state == 1 and post_state == -1:
             # LTD now occurs at Baseline levels
-            return -self.learning_rate * self.learning_rate_mod * da_low * self.pre_trace_ltd
+            delta = -self.learning_rate * self.learning_rate_mod * da_low * self.pre_trace_ltd
+            self._pending_delta_w = delta
+            return delta
+        self._pending_delta_w = 0.0
         return 0.0
     
     def apply_update(self, dt: float, neuromodulators: Dict[str, float], neighbor_deltas: List[float] = None):
+        # Store old weights for evolution logging
+        old_w_fast = self.w_fast
+        old_w_slow = self.w_slow
+        old_w_meta = self.w_meta
+        
         delta_w = self.potential_delta_w
+        own_delta_w = delta_w  # Store for associativity logging
+        neighbor_contribution = 0.0
+        
         if neighbor_deltas:
-            delta_w += self.params.associativity_strength * sum(dw / (i + 1) for i, dw in enumerate(neighbor_deltas[:3]))
+            neighbor_contribution = self.params.associativity_strength * sum(
+                dw / (i + 1) for i, dw in enumerate(neighbor_deltas[:3]))
+            delta_w += neighbor_contribution
         
         h_fast = self.pre_trace
         h_slow = 0.5 * self.pre_trace + 0.5 * self.post_trace
@@ -288,8 +1507,49 @@ class Synapse:
         activity = abs(self.w_fast) + abs(self.w_slow)
         self.integrity = min(1.0, self.integrity + 0.001 * dt * activity) if activity >= 0.01 else self.integrity - self.params.synapse_death_prob * dt
 
+        # NEW: Log weight evolution if significant change
+        logger = get_data_logger()
+        if logger.log_level >= 2:
+            total_change = (abs(self.w_fast - old_w_fast) + 
+                           abs(self.w_slow - old_w_slow) + 
+                           abs(self.w_meta - old_w_meta))
+            if total_change > 0.01:  # Threshold for logging
+                logger.log_weight_evolution_event(
+                    tick=0,  # Will be set by network
+                    synapse_pre_id=self.pre_id,
+                    synapse_post_id=self.post_id,
+                    w_fast_old=old_w_fast, w_fast_new=self.w_fast,
+                    w_slow_old=old_w_slow, w_slow_new=self.w_slow,
+                    w_meta_old=old_w_meta, w_meta_new=self.w_meta
+                )
+            
+            # Log associativity if neighbor contribution was significant
+            if abs(neighbor_contribution) > 0.001:
+                logger.log_associativity_event(
+                    tick=0,
+                    synapse_pre_id=self.pre_id,
+                    synapse_post_id=self.post_id,
+                    own_delta_w=own_delta_w,
+                    neighbor_contribution=neighbor_contribution,
+                    final_delta_w=delta_w
+                )
+
+        # Track previous silent state
+        was_silent = self.is_silent
+
         if self.is_silent and self.pre_trace > 0.5 and random.random() < 0.01:
             self.is_silent = False
+            # NEW: Log the event
+            logger = get_data_logger()
+            if logger.log_level >= 2:
+                logger.log_silent_synapse_event(
+                    tick=0,  # Will need to pass tick from network
+                    pre_id=self.pre_id,
+                    post_id=self.post_id,
+                    became_active=True,
+                    trigger="pre_trace_threshold"
+                )
+
         self.synapse_type = self._determine_type()
     
     def get_modulatory_effect(self) -> float:
@@ -308,7 +1568,10 @@ class Synapse:
             'learning_rate': self.learning_rate, 'plasticity_threshold': self.plasticity_threshold,
             'pre_trace': self.pre_trace,# Updated Save states in v 2.03
         'post_trace': self.post_trace,# Updated Save states in v 2.03
-        'pre_trace_ltd': self.pre_trace_ltd# Updated Save states in v 2.03
+        'pre_trace_ltd': self.pre_trace_ltd,# Updated Save # Updated Save states in v 2.04
+        'associative_strength': self.associative_strength, # Updated Save states in v 2.04
+         # NEW: Save neighbor synapse references as (pre_id, post_id) tuples
+        'neighbor_synapse_ids': [(ns.pre_id, ns.post_id) for ns in self.neighbor_synapses], # Updated Save states in v 2.04
         }
 
 class Neuraxon:
@@ -357,6 +1620,9 @@ class Neuraxon:
         
         self.circle_id = None
         self.fitness_score = 0.0
+        
+        # NEW: Track for subthreshold logging
+        self._prev_membrane_potential = 0.0
     
     def _nonlinear_dendritic_integration(self, synaptic_inputs: List[float], modulatory_inputs: List[float], dt: float) -> Tuple[float, List[float]]:
         branch_outputs = []
@@ -400,8 +1666,13 @@ class Neuraxon:
         total_synaptic, branch_outputs = self._nonlinear_dendritic_integration(synaptic_inputs, modulatory_inputs, dt)
         
         # Use individualized spontaneous_rate
+        # Track if firing is spontaneous
         spont_prob = self.spontaneous_firing_rate * dt * (1.0 + math.cos(self.phase) * 0.3)
-        spontaneous = random.uniform(-0.5, 0.5) if random.random() < spont_prob else 0.0
+        spontaneous = 0.0
+        is_spontaneous_firing = False
+        if random.random() < spont_prob:
+            spontaneous = random.uniform(-0.5, 0.5)
+            is_spontaneous_firing = True
         
         acetylcholine = neuromodulators.get('acetylcholine', 0.5)
         norepi = neuromodulators.get('norepinephrine', 0.5)
@@ -411,6 +1682,9 @@ class Neuraxon:
         drive = (total_synaptic + external_input + spontaneous) * gain
         tau_eff = max(1.0, self.intrinsic_timescale)
         prev_state = self.trinary_state
+        
+        # Store previous potential for subthreshold logging
+        prev_potential = self.membrane_potential
         
         # Use individualized adaptation_rate indirectly via adaptation variable dynamics
         self.membrane_potential += dt / tau_eff * (-self.membrane_potential + drive - self.adaptation)
@@ -429,6 +1703,63 @@ class Neuraxon:
         self.state_history.append(self.trinary_state)
         self._update_autocorrelation()
         activity_level = abs(self.trinary_state)
+        
+        # NEW: Log spontaneous event if state changed due to spontaneous input
+        if is_spontaneous_firing and abs(self.trinary_state) > 0:
+            logger = get_data_logger()
+            if logger.log_level >= 2:
+                logger.log_spontaneous_event(0, self.id, self.membrane_potential)
+        
+        # NEW: Log subthreshold integration events Updated Save states in v 2.04
+        logger = get_data_logger()
+        if logger.log_level >= 2:
+            # If we're in neutral state but close to threshold
+            if self.trinary_state == 0:
+                distance_to_exc = theta_exc - self.membrane_potential
+                distance_to_inh = self.membrane_potential - theta_inh
+                
+                # Log if within 30% of either threshold
+                if distance_to_exc < abs(theta_exc) * 0.3:
+                    logger.log_subthreshold_event(
+                        0, self.id, self.membrane_potential, 
+                        theta_exc, distance_to_exc
+                    )
+                elif distance_to_inh < abs(theta_inh) * 0.3:
+                    logger.log_subthreshold_event(
+                        0, self.id, self.membrane_potential,
+                        theta_inh, distance_to_inh
+                    )
+        
+        # NEW: Log significant autoreceptor effects Updated Save states in v 2.04
+        if abs(self.autoreceptor) > 0.1:
+            logger = get_data_logger()
+            if logger.log_level >= 2:
+                threshold_effect = -0.1 * self.autoreceptor
+                logger.log_autoreceptor_event(0, self.id, self.autoreceptor, threshold_effect)
+        
+        # NEW: Log threshold modulation events (when crossing state boundaries) Updated Save states in v 2.04
+        if prev_state != self.trinary_state:
+            logger = get_data_logger()
+            if logger.log_level >= 2:
+                ach_contrib = (neuromodulators.get('acetylcholine', 0.5) - 0.5) * 0.5
+                autoreceptor_contrib = -0.1 * self.autoreceptor
+                logger.log_threshold_modulation_event(
+                    0, self.id, self.firing_threshold_excitatory,
+                    theta_exc, ach_contrib, autoreceptor_contrib
+                )
+        
+        # NEW: Log Dendritic Spikes Updated Save states in v 2.04
+        # Check recent activity in branches to log events
+        logger = get_data_logger()
+        if logger.log_level >= 2:
+            for branch in self.dendritic_branches:
+                # If the most recent history indicates a spike (1.0)
+                if branch.local_spike_history and branch.local_spike_history[-1] > 0.9:
+                    # Avoid spamming: only log if it's a fresh spike (previous was 0) or probabalistically
+                    if len(branch.local_spike_history) < 2 or branch.local_spike_history[-2] < 0.1:
+                        logger.log_dendritic_spike_event(0, self.id, branch.branch_id, 
+                                                       branch.branch_potential, branch.plateau_potential, 
+                                                       branch.get_local_ca_influx())
         
         # Use individualized health decay
         self.health = min(1.0, self.health + 0.0005 * dt) if activity_level >= 0.01 else self.health - self.neuron_health_decay * dt
@@ -467,7 +1798,8 @@ class Neuraxon:
             'metabolic_rate': self.metabolic_rate,
             'recovery_rate': self.recovery_rate,
             'state_history': list(self.state_history), # Updated Save states in v 2.03
-            'autoreceptor': self.autoreceptor # Updated Save states in v 2.03
+            'autoreceptor': self.autoreceptor, # Updated Save states in v 2.03
+            'last_firing_time': self.last_firing_time  # Updated Save states in v 2.04
         }
 
 
@@ -500,6 +1832,16 @@ class ITUCircle:
                 neuron.intrinsic_timescale *= random.uniform(0.9, 1.1)
                 if hasattr(neuron.params, 'firing_threshold_excitatory'):
                     neuron.params.firing_threshold_excitatory *= random.uniform(0.95, 1.05)
+                
+                # NEW: Log mutation event
+                logger = get_data_logger()
+                if logger.log_level >= 2:
+                    logger.log_itu_evolution_event(
+                        0, self.circle_id, 'mutation',
+                        self.fitness_history[-1] if self.fitness_history else 0.0,
+                        self.fitness_history[-1] if self.fitness_history else 0.0,
+                        1
+                    )
     
     def prune_unfit_neurons(self) -> List[int]:
         """
@@ -512,6 +1854,17 @@ class ITUCircle:
             if neuron.fitness_score < avg_fitness * 0.3 and random.random() < 0.001:
                 neuron.is_active = False
                 pruned_ids.append(neuron.id)
+        
+        # NEW: Log pruning events
+        if pruned_ids:
+            logger = get_data_logger()
+            if logger.log_level >= 2:
+                logger.log_itu_evolution_event(
+                    0, self.circle_id, 'pruning',
+                    avg_fitness, avg_fitness,
+                    len(pruned_ids)
+                )
+        
         return pruned_ids
 
 class NeuraxonNetwork:
@@ -663,13 +2016,29 @@ class NeuraxonNetwork:
     def _apply_homeostatic_plasticity(self):
         """A slow-acting plasticity rule that adjusts neuron excitability."""
         if self.step_count % 100 != 0: return 
+        
+        logger = get_data_logger()
+        
         for neuron in self.all_neurons:
             if neuron.type == NeuronType.HIDDEN and len(neuron.state_history) > 0:
                 recent_activity = sum(abs(s) for s in neuron.state_history) / len(neuron.state_history)
+                old_threshold = neuron.params.firing_threshold_excitatory
+                
                 if recent_activity > self.params.target_firing_rate * 1.2:
                     neuron.params.firing_threshold_excitatory += self.params.homeostatic_plasticity_rate
                 elif recent_activity < self.params.target_firing_rate * 0.8:
                     neuron.params.firing_threshold_excitatory -= self.params.homeostatic_plasticity_rate
+                
+                # NEW: Log if threshold changed
+                new_threshold = neuron.params.firing_threshold_excitatory
+                if old_threshold != new_threshold and logger.log_level >= 2:
+                    logger.log_homeostatic_event(
+                        self.step_count, 
+                        neuron.id, 
+                        old_threshold, 
+                        new_threshold, 
+                        recent_activity
+                    )
     
     def _compute_branching_ratio(self):
         """Calculates the branching ratio (sigma), a measure of how activity propagates."""
@@ -827,8 +2196,15 @@ class NeuraxonNetwork:
             
     def to_dict(self) -> dict:
         """Serializes the entire network state into a single dictionary."""
-        return {'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 'branching_ratio': self.branching_ratio, 
-        'itu_circles': [c.circle_id for c in self.itu_circles],
+        return {'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 
+        'branching_ratio': self.branching_ratio, 
+        'modulator_grid': self.modulator_grid.tolist(),  # Updated Save states in v 2.04
+        'oscillator_phase_offsets': self.oscillator_phase_offsets,  # Updated Save states in v 2.04
+          'itu_circles': [{
+            'circle_id': c.circle_id,
+            'fitness_history': c.fitness_history,  # Updated Save states in v 2.04
+            'mutation_rate': c.mutation_rate  # Updated Save states in v 2.04
+        } for c in self.itu_circles],
         'activation_history': list(self.activation_history)    # Updated Save states in v 2.03
          }
 
@@ -867,6 +2243,8 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
                 n.intrinsic_timescale = nd.get('intrinsic_timescale', n.membrane_time_constant)
                 n.adaptation = nd.get('adaptation', 0.0)
                 n.autoreceptor = nd.get('autoreceptor', 0.0)
+                # ADD: Restore last firing time
+                n.last_firing_time = nd.get('last_firing_time', -1000.0)
                 
                 # ADD: Restore state_history
                 if 'state_history' in nd:
@@ -917,12 +2295,33 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
         s.pre_trace = sd.get('pre_trace', 0.0)
         s.post_trace = sd.get('post_trace', 0.0)
         s.pre_trace_ltd = sd.get('pre_trace_ltd', 0.0)
-        
+         # ADD: Restore associative strength
+        s.associative_strength = sd.get('associative_strength', 0.0)
+        # Temporarily store neighbor IDs for second pass
+        s._saved_neighbor_ids = sd.get('neighbor_synapse_ids', None)
         net.synapses.append(s)
-        
-    # Re-link neighbor synapses, which is necessary for the associativity rule.
+    # Build a lookup dictionary for fast synapse retrieval (Updated Save states in v 2.04)
+    synapse_lookup = {(s.pre_id, s.post_id): s for s in net.synapses}
+    
+    # Second pass: Restore neighbor_synapses relationships (Updated Save states in v 2.04)
     for s in net.synapses:
-        s.neighbor_synapses = [ns for ns in net.synapses if ns.pre_id == s.pre_id and ns.post_id != s.post_id]
+        if hasattr(s, '_saved_neighbor_ids') and s._saved_neighbor_ids is not None:
+            # Restore from saved IDs
+            s.neighbor_synapses = []
+            for (pre_id, post_id) in s._saved_neighbor_ids:
+                neighbor = synapse_lookup.get((pre_id, post_id))
+                if neighbor is not None:
+                    s.neighbor_synapses.append(neighbor)
+            delattr(s, '_saved_neighbor_ids')  # Clean up temporary attribute
+        else:
+            # Fallback: Rebuild from scratch (backward compatibility)
+            s.neighbor_synapses = [ns for ns in net.synapses 
+                                   if ns.pre_id == s.pre_id and ns.post_id != s.post_id]
+    
+
+    # Re-link neighbor synapses, which is necessary for the associativity rule.
+    #for s in net.synapses:
+#        s.neighbor_synapses = [ns for ns in net.synapses if ns.pre_id == s.pre_id and ns.post_id != s.post_id]
         
     # Restore the rest of the global network state.
     net.neuromodulators = d['neuromodulators']
@@ -931,10 +2330,25 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
     net.total_energy_consumed = d.get('energy_consumed', 0.0)
     net.branching_ratio = d.get('branching_ratio', 1.0)
     
-    # ADD: Restore activation_history
+    # ADD: Restore activation_history v2.04
     if 'activation_history' in d:
         net.activation_history = deque(d['activation_history'], maxlen=1000)
+     # ADD: Restore modulator diffusion grid v2.04
+    if 'modulator_grid' in d:
+        net.modulator_grid = np.array(d['modulator_grid'])
     
+    # ADD: Restore oscillator phase offsets v2.04
+    if 'oscillator_phase_offsets' in d:
+        net.oscillator_phase_offsets = tuple(d['oscillator_phase_offsets'])
+    
+    # ADD: Restore ITU circles v2.04
+    if 'itu_circles' in d and isinstance(d['itu_circles'], list):
+        for i, circle_data in enumerate(d['itu_circles']):
+            if i < len(net.itu_circles):
+                if isinstance(circle_data, dict):
+                    net.itu_circles[i].fitness_history = circle_data.get('fitness_history', [])
+                    net.itu_circles[i].mutation_rate = circle_data.get('mutation_rate', 0.01)
+                # else: it's just an int (old format), skip
     return net
     
 
@@ -1097,6 +2511,7 @@ class NxEr:
     died_ts: Optional[float] = None
     # UPDATED: 6 inputs now
     last_inputs: Tuple[float, ...] = (0, 0, 0, 0, 0, 0) 
+    last_outputs: Tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
     ticks_per_action: int = 1
     tick_accum: int = 0
     harvesting: Optional[int] = None
@@ -1183,27 +2598,39 @@ class World:
         x, y = p
         return self.grid[y % self.N][x % self.N]
 
-def _net_batch_step_and_outputs(batch_items: List[Tuple[int, dict, Tuple[int, int, int], int]]):
+def _net_batch_step_and_outputs(batch_items: List[Tuple[int, dict, Tuple[int, int, int], int, int]]):
     """
     This is the target function for the worker processes in the multiprocessing pool.
     It receives a batch of serialized networks, deserializes them, runs the simulation step,
     and returns the serialized results. This is the core of the parallel computation.
     """
     out = []
-    for aid, serialized_net, input_states, steps in batch_items:
+    
+    # Initialize worker logger
+    logger = get_data_logger()
+    
+    for aid, serialized_net, input_states, steps, log_level in batch_items:
         try:
+            # Ensure worker logger is synced with main process level and clear previous batch data
+            logger.set_level(log_level)
+            logger.clear_events()
+            
             # Reconstruct the network object from its dictionary representation.
             net = _rebuild_net_from_dict(serialized_net)
             # Run the network simulation for the specified number of steps.
             for _ in range(max(1, steps)):
                 net.set_input_states(list(input_states))
                 net.simulate_step()
+            
+            # Capture events generated during this step
+            events = {k: v[:] for k, v in logger.get_event_lists().items()}
+            
             # Serialize the results and append to the output list.
-            out.append((aid, net.to_dict(), net.get_output_states(), net.get_energy_status()))
+            out.append((aid, net.to_dict(), net.get_output_states(), net.get_energy_status(), events))
         except Exception as e:
             # Gracefully handle any errors that occur within a worker process.
             print(f"Worker error: {e}")
-            out.append((aid, serialized_net, [0, 0, 0, 0], {}))
+            out.append((aid, serialized_net, [0, 0, 0, 0], {}, {}))
     return out
 
 class Renderer:
@@ -1545,7 +2972,7 @@ class Renderer:
         self.dt = self.clock.tick(fps_cap) / 1000.0
         return self.dt
 
-def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: float = 0.05, StartingNxErs: int = 30, MaxNxErs: int = 400, MaxFood: int = 300, FoodRespan: int = 600, StartFood: float = 40.0, MaxNeurons: int = 12, GlobalTimeSteps: int = 60, TextureLand: Optional[str] = None, TextureSea: Optional[str] = None, TextureRock: Optional[str] = None, TextureFood: Optional[str] = None, TextureNxEr: Optional[str] = None, TexturesAlpha: float = 0.7, MateCooldownSeconds: int = 10, random_seed: Optional[int] = None, limit_minutes: Optional[int] = None, auto_save: bool = False, auto_save_prefix: str = "", auto_start: bool = False):
+def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: float = 0.05, StartingNxErs: int = 30, MaxNxErs: int = 400, MaxFood: int = 300, FoodRespan: int = 600, StartFood: float = 40.0, MaxNeurons: int = 12, GlobalTimeSteps: int = 60, TextureLand: Optional[str] = None, TextureSea: Optional[str] = None, TextureRock: Optional[str] = None, TextureFood: Optional[str] = None, TextureNxEr: Optional[str] = None, TexturesAlpha: float = 0.7, MateCooldownSeconds: int = 10, random_seed: Optional[int] = None, limit_minutes: Optional[int] = None, auto_save: bool = False, auto_save_prefix: str = "", auto_start: bool = False, save_on_round_end: bool = True):
     """
     The main function that initializes and runs the entire Game of Life simulation.
     """
@@ -1553,7 +2980,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
     NxWorldSize = _clamp(int(NxWorldSize), 30, 1000)
     NxWorldSea = _clamp(float(NxWorldSea), 0.0, 0.95)
     NxWorldRocks = _clamp(float(NxWorldRocks), 0.0, 0.9)
-    StartingNxErs = _clamp(int(StartingNxErs), 10, 100)
+    StartingNxErs = _clamp(int(StartingNxErs), 1, 150)
     MaxNxErs = _clamp(int(MaxNxErs), 100, 180) #Clamped atm to 180 to prevent the exponential in compute
     MaxFood = _clamp(int(MaxFood), 10, 1000)
     FoodRespan = _clamp(int(FoodRespan), 10, 3000)
@@ -1850,8 +3277,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         default = save_name or f"nxer_{a.name}_{_now_str()}.json"
         path = _pick_save_file(default)
         if not path: return
-        data = {"meta": {"created": _now_str(), "type": "NxEr"}, "nxer": {"id": a.id, "name": a.name, "color": a.color, "pos": a.pos, "can_land": a.can_land, "can_sea": a.can_sea, "food": a.food, "is_male": a.is_male, "alive": a.alive, "born_ts": a.born_ts, "died_ts": a.died_ts, "last_inputs": a.last_inputs, "ticks_per_action": a.ticks_per_action, "tick_accum": a.tick_accum, "harvesting": a.harvesting, "mating_with": a.mating_with, "mating_end_tick": a.mating_end_tick, "visited": list(a.visited), "dopamine_boost_ticks": a.dopamine_boost_ticks, "_last_O4": a._last_O4, "mating_intent_until_tick": a.mating_intent_until_tick, "parents": list(a.parents) if a.parents else [None, None], "mate_cooldown_until_tick": a.mate_cooldown_until_tick, "last_move_tick": a.last_move_tick, "last_pos": a.last_pos, "stats": asdict(a.stats), "net": a.net.to_dict(),
+        data = {"meta": {"created": _now_str(), "type": "NxEr"}, "nxer": {"id": a.id, "name": a.name, "color": a.color, "pos": a.pos, "can_land": a.can_land, "can_sea": a.can_sea, 
+        "food": a.food, "is_male": a.is_male, "alive": a.alive, "born_ts": a.born_ts, "died_ts": a.died_ts, "last_inputs": a.last_inputs, "last_outputs": a.last_outputs, "ticks_per_action": a.ticks_per_action, "tick_accum": a.tick_accum, "harvesting": a.harvesting, "mating_with": a.mating_with, "mating_end_tick": a.mating_end_tick, "visited": list(a.visited), "dopamine_boost_ticks": a.dopamine_boost_ticks, "_last_O4": a._last_O4, "mating_intent_until_tick": a.mating_intent_until_tick, "parents": list(a.parents) if a.parents else [None, None], "mate_cooldown_until_tick": a.mate_cooldown_until_tick, "last_move_tick": a.last_move_tick, "last_pos": a.last_pos, "stats": asdict(a.stats), "net": a.net.to_dict(),
         "vision_range": a.vision_range, "smell_radius": a.smell_radius, "heading": a.heading, "clan_id": a.clan_id}}
+        if get_data_logger().log_level >= 2:
+            data["nxer"]["network_detailed"] = _extract_detailed_network_state(a.net)
         with open(path, "w") as f: json.dump(data, f)
         print(f"[SAVE NxEr] {path}")
     
@@ -1868,12 +3298,16 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         name = base_name; counter = 1
         alive_names = {a.name for a in nxers.values() if a.alive}
         while name in alive_names: name = f"{base_name}{counter}"; counter += 1
-        a = NxEr(id=(max(nxers.keys()) + 1) if nxers else 0, name=name, color=tuple(nd.get("color", (200, 200, 200))), pos=pos, can_land=nd["can_land"], can_sea=nd["can_sea"], net=net, food=float(StartFood), is_male=bool(nd.get("is_male", random.random() < 0.5)), alive=True, born_ts=time.time(), died_ts=None, last_inputs=tuple(nd.get("last_inputs", (0, 0, 0, 0, 0, 0))), ticks_per_action=int(nd.get("ticks_per_action", 1)), tick_accum=int(nd.get("tick_accum", 0)), harvesting=nd["harvesting"], mating_with=nd["mating_with"], mating_end_tick=nd["mating_end_tick"], stats=NxErStats(**nd.get("stats", {})), visited=set(map(tuple, nd.get("visited", []))), dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), _last_O4=int(nd.get("_last_O4", 0)), mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), parents=tuple(nd.get("parents", [None, None])), mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), last_move_tick=int(nd.get("last_move_tick", step_tick)), last_pos=tuple(nd.get("last_pos", pos)),
+        a = NxEr(id=(max(nxers.keys()) + 1) if nxers else 0, name=name, color=tuple(nd.get("color", (200, 200, 200))), pos=pos, can_land=nd["can_land"], can_sea=nd["can_sea"], 
+        net=net, food=float(StartFood), is_male=bool(nd.get("is_male", random.random() < 0.5)), alive=True, born_ts=time.time(), died_ts=None, last_inputs=tuple(nd.get("last_inputs", (0, 0, 0, 0, 0, 0))), last_outputs=tuple(nd.get("last_outputs", (0, 0, 0, 0, 0))), ticks_per_action=int(nd.get("ticks_per_action", 1)), tick_accum=int(nd.get("tick_accum", 0)), harvesting=nd["harvesting"], mating_with=nd["mating_with"], mating_end_tick=nd["mating_end_tick"], stats=NxErStats(**nd.get("stats", {})), visited=set(map(tuple, nd.get("visited", []))), dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), _last_O4=int(nd.get("_last_O4", 0)), mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), parents=tuple(nd.get("parents", [None, None])), mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), last_move_tick=int(nd.get("last_move_tick", step_tick)), last_pos=tuple(nd.get("last_pos", pos)),
                  vision_range=nd.get("vision_range", 5), smell_radius=nd.get("smell_radius", 3), heading=nd.get("heading", 0), clan_id=nd.get("clan_id", None))
         a.tick_accum = 0; a.harvesting = None; a.mating_with = None; a.mating_end_tick = None; a.mating_intent_until_tick = 0; a.mate_cooldown_until_tick = 0
         nxers[a.id] = a
+        if get_data_logger().log_level >= 2 and "network_detailed" in nd:
+            _apply_detailed_network_state(a.net, nd["network_detailed"])
         occupied.add(a.pos)
         print(f"[LOAD NxEr] spawned {a.name} at {a.pos}")
+        get_data_logger().log_nxer_event(step_tick, 'loaded', a.id, {'name': a.name, 'from_file': path})
     
     def save_nxvizer_to_file(a: NxEr, save_name: str = None):
         default = save_name or f"nxvizer_{a.name}_{_now_str()}.json"
@@ -1906,11 +3340,78 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                  vision_range=vision, smell_radius=smell, heading=heading, clan_id=None)
         used_colors.add(a.color); nxers[a.id] = a; occupied.add(a.pos)
         print(f"[LOAD NxVizer] spawned {a.name} at {a.pos}")
+    
+    def _extract_detailed_network_state(net: NeuraxonNetwork) -> dict:
+        """Extract detailed network state for Level 2 logging."""
+        return {
+            'all_neuron_states': [{
+                'id': n.id,
+                'membrane_potential': n.membrane_potential,
+                'trinary_state': n.trinary_state,
+                'adaptation': n.adaptation,
+                'autoreceptor': n.autoreceptor,
+                'health': n.health,
+                'energy_level': n.energy_level,
+                'phase': n.phase,
+                'natural_frequency': n.natural_frequency,
+                'intrinsic_timescale': n.intrinsic_timescale,
+                'fitness_score': n.fitness_score,
+                'state_history': list(n.state_history),
+                'dendritic_branches': [{
+                    'branch_potential': b.branch_potential,
+                    'plateau_potential': b.plateau_potential,
+                    'local_spike_history': list(b.local_spike_history)
+                } for b in n.dendritic_branches]
+            } for n in net.all_neurons],
+            'all_synapse_states': [{
+                'pre_id': s.pre_id,
+                'post_id': s.post_id,
+                'w_fast': s.w_fast,
+                'w_slow': s.w_slow,
+                'w_meta': s.w_meta,
+                'integrity': s.integrity,
+                'pre_trace': s.pre_trace,
+                'post_trace': s.post_trace,
+                'pre_trace_ltd': s.pre_trace_ltd,
+                'learning_rate_mod': s.learning_rate_mod,
+                'associative_strength': s.associative_strength
+            } for s in net.synapses],
+            'neuromodulators': dict(net.neuromodulators),
+            'modulator_grid': net.modulator_grid.tolist(),
+            'oscillator_phase_offsets': list(net.oscillator_phase_offsets),
+            'activation_history': list(net.activation_history),
+            'branching_ratio': net.branching_ratio,
+            'time': net.time,
+            'step_count': net.step_count,
+            'total_energy_consumed': net.total_energy_consumed
+        }
+    
+    def _apply_detailed_network_state(net: NeuraxonNetwork, detailed: dict):
+        """Apply detailed network state from Level 2 save."""
+        if 'all_neuron_states' in detailed:
+            for ns in detailed['all_neuron_states']:
+                if ns['id'] < len(net.all_neurons):
+                    n = net.all_neurons[ns['id']]
+                    n.state_history = deque(ns.get('state_history', []), maxlen=50)
+                    n.autoreceptor = ns.get('autoreceptor', 0.0)
+        
+        if 'modulator_grid' in detailed:
+            net.modulator_grid = np.array(detailed['modulator_grid'])
+        
+        if 'activation_history' in detailed:
+            net.activation_history = deque(detailed['activation_history'], maxlen=1000)
+        
+        net.branching_ratio = detailed.get('branching_ratio', 1.0)
         
     def save_state(name=None):
         name = name or f"nx_world_save_{_now_str()}.json"
-        data = {"meta": {"created": _now_str(), "step_tick": step_tick, "GlobalTimeSteps": GlobalTimeSteps, "births_count": births_count, "deaths_count": deaths_count, "game_index": game_index}, "world": {"N": world.N, "grid": world.grid}, "nxers": [{"id": a.id, "name": a.name, "color": a.color, "pos": a.pos, "can_land": a.can_land, "can_sea": a.can_sea, "food": a.food, "is_male": a.is_male, "alive": a.alive, "born_ts": a.born_ts, "died_ts": a.died_ts, "last_inputs": a.last_inputs, "ticks_per_action": a.ticks_per_action, "tick_accum": a.tick_accum, "harvesting": a.harvesting, "mating_with": a.mating_with, "mating_end_tick": a.mating_end_tick, "visited": list(a.visited), "dopamine_boost_ticks": a.dopamine_boost_ticks, "_last_O4": a._last_O4, "mating_intent_until_tick": a.mating_intent_until_tick, "parents": list(a.parents) if a.parents else [None, None], "mate_cooldown_until_tick": a.mate_cooldown_until_tick, "last_move_tick": a.last_move_tick, "last_pos": a.last_pos, "stats": asdict(a.stats), "net": a.net.to_dict(),
+        data = {"meta": {"created": _now_str(), "step_tick": step_tick, "GlobalTimeSteps": GlobalTimeSteps, "births_count": births_count, "deaths_count": deaths_count, "game_index": game_index}, 
+        "world": {"N": world.N, "grid": world.grid},
+         "nxers": [{"id": a.id, "name": a.name, "color": a.color, "pos": a.pos, "can_land": a.can_land, "can_sea": a.can_sea, "food": a.food, "is_male": a.is_male, "alive": a.alive, "born_ts": a.born_ts, "died_ts": a.died_ts,
+          "last_inputs": a.last_inputs, "last_outputs": a.last_outputs, "ticks_per_action": a.ticks_per_action, "tick_accum": a.tick_accum, "harvesting": a.harvesting, "mating_with": a.mating_with, "mating_end_tick": a.mating_end_tick, "visited": list(a.visited), "dopamine_boost_ticks": a.dopamine_boost_ticks, "_last_O4": a._last_O4, "mating_intent_until_tick": a.mating_intent_until_tick, "parents": list(a.parents) if a.parents else [None, None], "mate_cooldown_until_tick": a.mate_cooldown_until_tick, "last_move_tick": a.last_move_tick, "last_pos": a.last_pos, "stats": asdict(a.stats), "net": a.net.to_dict(),
         "vision_range": a.vision_range, "smell_radius": a.smell_radius, "heading": a.heading, "clan_id": a.clan_id} for a in nxers.values()], "foods": [{"id": f.id, "anchor": f.anchor, "pos": f.pos, "alive": f.alive, "respawn_at_tick": f.respawn_at_tick, "remaining": f.remaining, "progress": f.progress} for f in foods.values()], "all_time_best": {k: [{"name": a.name, "is_male": a.is_male, "stats": asdict(a.stats), "net": a.net.to_dict(), "can_land": a.can_land, "can_sea": a.can_sea} for a in v] for k, v in all_time_best.items()}}
+        logger = get_data_logger()
+        data["data_logger"] = logger.to_dict()
         path = _safe_path(name)
         with open(path, "w") as f: json.dump(data, f)
         print(f"[SAVE] {path}")
@@ -1933,7 +3434,9 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         for nd in data["nxers"]:
             net = _rebuild_net_from_dict(nd["net"])
             pos_wrapped = wrap_pos(tuple(nd["pos"]))
-            a = NxEr(id=nd["id"], name=nd["name"], color=tuple(nd["color"]), pos=pos_wrapped, can_land=nd["can_land"], can_sea=nd["can_sea"], net=net, food=float(nd["food"]), is_male=nd.get("is_male", random.random() < 0.5), alive=nd["alive"], born_ts=nd["born_ts"], died_ts=nd["died_ts"], last_inputs=tuple(nd["last_inputs"]), ticks_per_action=int(nd["ticks_per_action"]), tick_accum=int(nd["tick_accum"]), harvesting=nd["harvesting"], mating_with=nd["mating_with"], mating_end_tick=nd["mating_end_tick"], stats=NxErStats(**nd["stats"]), visited=set(map(tuple, nd.get("visited", []))), dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), _last_O4=int(nd.get("_last_O4", 0)), mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), parents=tuple(nd.get("parents", [None, None])), mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), last_move_tick=int(nd.get("last_move_tick", step_tick)), last_pos=tuple(nd.get("last_pos", pos_wrapped)),
+            a = NxEr(id=nd["id"], name=nd["name"], color=tuple(nd["color"]), pos=pos_wrapped, can_land=nd["can_land"], can_sea=nd["can_sea"], net=net, food=float(nd["food"]), 
+            is_male=nd.get("is_male", random.random() < 0.5), alive=nd["alive"], born_ts=nd["born_ts"], died_ts=nd["died_ts"], 
+            last_inputs=tuple(nd["last_inputs"]), last_outputs=tuple(nd["last_outputs"]), ticks_per_action=int(nd["ticks_per_action"]), tick_accum=int(nd["tick_accum"]), harvesting=nd["harvesting"], mating_with=nd["mating_with"], mating_end_tick=nd["mating_end_tick"], stats=NxErStats(**nd["stats"]), visited=set(map(tuple, nd.get("visited", []))), dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), _last_O4=int(nd.get("_last_O4", 0)), mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), parents=tuple(nd.get("parents", [None, None])), mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), last_move_tick=int(nd.get("last_move_tick", step_tick)), last_pos=tuple(nd.get("last_pos", pos_wrapped)),
                      vision_range=nd.get("vision_range", 5), smell_radius=nd.get("smell_radius", 3), heading=nd.get("heading", 0), clan_id=nd.get("clan_id", None))
             nxers[a.id] = a
             if a.alive: occupied.add(a.pos)
@@ -1941,6 +3444,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         for fd in data["foods"]:
             f = Food(id=fd["id"], anchor=wrap_pos(tuple(fd["anchor"])), pos=wrap_pos(tuple(fd["pos"])), alive=fd["alive"], respawn_at_tick=fd["respawn_at_tick"], remaining=int(fd.get("remaining", 25)), progress={int(k): int(v) for k, v in fd.get("progress", {}).items()})
             foods[f.id] = f
+        
+        if "data_logger" in data and get_data_logger().log_level >= 2:
+            logger = get_data_logger()
+            saved_level = data["data_logger"].get("metadata", {}).get("log_level", 1)
+            logger.set_level(saved_level)
+            logger.reset()
+            logger.game_metadata['loaded_from'] = path
             
     def schedule_respawn(food: Food, cur_tick: int):
         food.alive = False
@@ -2045,6 +3555,10 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         nonlocal world, nxers, foods, occupied, births_count, deaths_count, effects, game_index, used_colors, champion_counts
         update_all_time_best()
         champs = champions_from_last_game()
+        
+        # Reset data logger for new game round
+        get_data_logger().reset()
+        
         game_index += 1
         effects.clear(); births_count = 0; deaths_count = 0; used_colors = set(RESERVED_COLORS)
         world = World(NxWorldSize, NxWorldSea, NxWorldRocks, rnd_seed=None)
@@ -2088,8 +3602,9 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         return current
 
     FIXED_DT = 1.0 / GlobalTimeSteps
-    METABOLIC_RAMP_PER_SEC = 0.02  # Metabolic Ramp: +2%/sec idle (atrophy)
+    METABOLIC_RAMP_PER_SEC = 1.2  # Metabolic Ramp: +120%/sec idle (atrophy)
     accumulator = 0.0
+    data_logger = get_data_logger()
     
     try:
         while running:
@@ -2114,7 +3629,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     elif ev.key == pygame.K_s:
                         was_paused = paused; paused = True; save_state(); paused = was_paused
                     elif ev.key == pygame.K_l:
-                        candidates = sorted([p for p in os.listdir(os.getcwd()) if p.startswith("nx_world_save_") and p.endswith(".json")])
+                        candidates = sorted([p for p in os.listdir(os.getcwd()) if p.startswith("nx_world_save_") and p.endswith(".json") and not p.endswith("_log.json")])
                         if candidates: paused = True; load_state(candidates[-1]); paused = False; renderer.clear_detail()
                     elif ev.key == pygame.K_v:
                         renderer.visual_mode = not renderer.visual_mode
@@ -2126,7 +3641,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     elif btn == "save":
                         was_paused = paused; paused = True; save_state(); paused = was_paused
                     elif btn == "load":
-                        candidates = sorted([p for p in os.listdir(os.getcwd()) if p.startswith("nx_world_save_") and p.endswith(".json")])
+                        candidates = sorted([p for p in os.listdir(os.getcwd()) if p.startswith("nx_world_save_") and p.endswith(".json") and not p.endswith("_log.json")])
                         if candidates: paused = True; load_state(candidates[-1]); paused = False; renderer.clear_detail()
                     elif btn == "save_best":
                         file_mapping = {'food_found': 'BestFoodFound.json', 'food_taken': 'BestFoodTaken.json', 'explored': 'BestWorldExplorer.json', 'time_lived_s': 'BestTimeLived.json', 'mates_performed': 'BestMates.json', 'fitness_score': 'BestFitness.json'}
@@ -2172,8 +3687,19 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                     else: renderer.clear_detail()
                 renderer.event_zoom_rotate_pan(ev)
             
-            if game_over and game_over_start_time is not None and not user_declined_restart:
-                if time.time() - game_over_start_time > 30: # Auto-restart after 30 sec (user prompt said 2 min but code said 30, keeping 30 logic)
+            if game_over and game_over_start_time is not None and not user_declined_restart:                
+                if time.time() - game_over_start_time > 10: # Auto-restart after 10 sec                 
+                    # FIX: Update Hall of Fame statistics BEFORE saving so the file includes this round's champions
+                    update_all_time_best()
+                    
+                    if save_on_round_end:
+                    # 1. Autosave the round
+                        timestamp = _now_str().replace(":", "-")
+                        game_id = "".join([str(random.randint(0, 9)) for _ in range(10)])
+                        filename = f"{game_id}_{game_index}_Completed_{timestamp}.json"
+                        save_state(filename)
+                        print(f"[SAVING ROUND] {game_index} saved as {filename}")
+                                        
                     game_over = False; paused = False; restart_game_with_champions(); step_tick = 0; accumulator = 0.0
                     renderer.clear_detail(); game_over_start_time = None; user_declined_restart = False
                     
@@ -2190,16 +3716,29 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
             
             for _ in range(steps_to_process):
                 step_tick += 1
+                current_network = next(iter(nxers.values())).net if nxers else None
+                data_logger.log_tick(step_tick, current_network, nxers)
                 
                 # --- A. Update Game World State & Agent Vitals ---
                 effects[:] = [ef for ef in effects if (step_tick - ef['start']) < GlobalTimeSteps]
                 for a in nxers.values():
                     if not a.alive: continue
-                    a.stats.time_lived_s += FIXED_DT; a.food -= 0.01 * FIXED_DT * min(3.0, 1.0 + METABOLIC_RAMP_PER_SEC * max(0.0, (step_tick - a.last_move_tick) / GlobalTimeSteps))
+                    a.stats.time_lived_s += FIXED_DT
+                    
+                    # UPDATED: Metabolic Calculation
+                    # 1. Calculate idle seconds
+                    idle_seconds = max(0.0, (step_tick - a.last_move_tick) / GlobalTimeSteps)
+                    # 2. Calculate Atrophy Factor (1.0 = Base, +1.2 per second idle)                    
+                    atrophy_factor = 1.0 + METABOLIC_RAMP_PER_SEC * idle_seconds                    
+                    # 3. Apply consumption                    
+                    a.food -= 0.01 * FIXED_DT * atrophy_factor
+                    
                     if a.food <= 0 and a.alive:
                         a.alive = False; a.died_ts = time.time(); deaths_count += 1
+                        data_logger.log_nxer_event(step_tick, 'died', a.id, {'cause': 'starvation', 'name': a.name})
+                        data_logger.update_nxer_stats(a)
                         if a.pos in occupied: occupied.discard(a.pos)
-                        push_effect('skull', a.pos)                
+                        push_effect('skull', a.pos)
                 for a in nxers.values():
                     if not a.alive: continue
                     if a.mating_with is not None and step_tick >= (a.mating_end_tick or 0):
@@ -2263,26 +3802,33 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         
                         a.last_inputs = tuple(inputs)
                         netdict = a.net.to_dict()
-                        netdict['parameters']['metabolic_rate'] *= min(3.0, 1.0 + METABOLIC_RAMP_PER_SEC * max(0.0, (step_tick - a.last_move_tick) / GlobalTimeSteps))
+                        idle_seconds = max(0.0, (step_tick - a.last_move_tick) / GlobalTimeSteps)
+                        netdict['parameters']['metabolic_rate'] *= (1.0 + METABOLIC_RAMP_PER_SEC * idle_seconds)
                         if a.dopamine_boost_ticks > 0:
                             nd = netdict['neuromodulators']
                             nd['dopamine'] = max(nd.get('dopamine', 0.12), 0.9); nd['serotonin'] = max(nd.get('serotonin', 0.12), 0.6)
                             a.dopamine_boost_ticks -= 1
-                        jobs[a.id] = (netdict, a.last_inputs, max(1, a.net.params.simulation_steps // GlobalTimeSteps))
+                        # Pass log_level to worker
+                        jobs[a.id] = (netdict, a.last_inputs, max(1, a.net.params.simulation_steps // GlobalTimeSteps), data_logger.log_level)
                 
-                results: Dict[int, Tuple[dict, List[int], dict]] = {}
+                results: Dict[int, Tuple[dict, List[int], dict, dict]] = {}
                 if jobs:
-                    items = [(aid, nd, ins, st) for aid, (nd, ins, st) in jobs.items()]
+                    items = [(aid, nd, ins, st, lvl) for aid, (nd, ins, st, lvl) in jobs.items()]
                     num_jobs = len(items); target_batches = max(1, nx_workers * 2); chunk = max(1, (num_jobs + target_batches - 1) // target_batches)
                     futures = []
                     for batch in _chunked(items, chunk): futures.append(nx_pool.submit(_net_batch_step_and_outputs, batch))
                     for fut in as_completed(futures):
                         try:
-                            for aid, net_dict, outs, energy_status in fut.result(): results[aid] = (net_dict, outs, energy_status)
+                            for aid, net_dict, outs, energy_status, worker_events in fut.result(): 
+                                results[aid] = (net_dict, outs, energy_status, worker_events)
                         except Exception as e: print(f"Error in worker future: {e}")
 
                 # --- C. Apply Network Outputs ---
-                for aid, (net_dict, outs, energy_status) in results.items():
+                for aid, (net_dict, outs, energy_status, worker_events) in results.items():
+                    # Merge worker events into main logger
+                    if worker_events:
+                        data_logger.merge_events(worker_events)
+                        
                     a = nxers.get(aid)
                     if not a or not a.alive: continue
                     a.net = _rebuild_net_from_dict(net_dict)
@@ -2295,8 +3841,12 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         normalized_energy = min(a.stats.energy_efficiency / 10.0, 1.0) if a.stats.energy_efficiency else 0.0
                         normalized_sync = min(a.stats.temporal_sync_score / 2.0, 1.0)
                         a.stats.fitness_score = normalized_food * 0.3 + normalized_explored * 0.2 + normalized_time * 0.2 + normalized_energy * 0.15 + normalized_sync * 0.15
+                        if energy_status.get('efficiency', 0) > 0.5:
+                            data_logger.log_plasticity_event(step_tick, 'activity', -1, a.id, energy_status.get('efficiency', 0))
                     
                     o = (outs + [0, 0, 0, 0, 0])[:5]
+                    a.last_outputs = tuple(o)
+                    data_logger.log_io_pattern(step_tick, a.id, a.last_inputs, tuple(a.last_outputs))
                     O1, O2, O3, O4, O5 = o
                     
                     if O1 == 0 and O2 == 0 and random.random() < 0.4:
@@ -2380,10 +3930,12 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         A.mating_with = B.id; B.mating_with = A.id; dur = max(A.net.params.simulation_steps, B.net.params.simulation_steps)
                         A.mating_end_tick = step_tick + dur; B.mating_end_tick = step_tick + dur; A.food -= 1; B.food -= 1
                         push_effect('heart', A.pos); spawn_child(A, B, A.pos)
+                        data_logger.log_nxer_event(step_tick, 'mating', A.id, {'partner': B.id})
                     
                     # Stealing Logic (Family Check)
                     same_clan = (A.clan_id is not None and B.clan_id is not None and A.clan_id == B.clan_id)
                     if not same_clan:
+                        data_logger.log_nxer_event(step_tick, 'stealing_attempt', A.id, {'target': B.id})
                         if (O4 == -1 or O3 == -1 or (A.food < 2 and B.food > 3 and random.random() < 0.3)) and B.food > 0:
                             B.food -= 1; A.food += 1; A.stats.food_taken += 1
                             
@@ -2420,6 +3972,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 )
                                 if a.food <= 0 and a.alive:
                                     a.alive = False; a.died_ts = time.time(); deaths_count += 1
+                                    data_logger.log_nxer_event(step_tick, 'died', a.id, {'cause': 'harvesting_exhaustion', 'name': a.name})
+                                    data_logger.update_nxer_stats(a)
                                     if a.pos in occupied: occupied.discard(a.pos)
                                     push_effect('skull', a.pos)
                         if f.remaining <= 0:
@@ -2448,8 +4002,10 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 dur = max(a.net.params.simulation_steps, b.net.params.simulation_steps)
                                 a.mating_end_tick = step_tick + dur; b.mating_end_tick = step_tick + dur
                                 a.food -= 1; b.food -= 1; push_effect('heart', tgt); spawn_child(a, b, tgt)
+                                data_logger.log_nxer_event(step_tick, 'mating', a.id, {'partner': b.id})
                             same_clan = (a.clan_id is not None and b.clan_id is not None and a.clan_id == b.clan_id)
                             if not same_clan:
+                                data_logger.log_nxer_event(step_tick, 'stealing_attempt', a.id, {'target': b.id})
                                 if (O4 == -1 or O3 == -1 or (a.food < 2 and b.food > 3 and random.random() < 0.3)) and b.food > 0:
                                     b.food -= 1; a.food += 1; a.stats.food_taken += 1
                             a._last_O4 = O4
@@ -2493,6 +4049,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         a.food -= 0.1
                         if a.food <= 0 and a.alive:
                             a.alive = False; a.died_ts = time.time(); deaths_count += 1
+                            data_logger.log_nxer_event(step_tick, 'died', a.id, {'cause': 'movement_exhaustion', 'name': a.name})
+                            data_logger.update_nxer_stats(a)
                             if a.pos in occupied: occupied.discard(a.pos)
                             push_effect('skull', a.pos)
                 
@@ -2517,8 +4075,16 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                 if not all_candidates: best_scores[title] = 0
                 else: best_scores[title] = max(getattr(a.stats, stat_name) for a in all_candidates)
             renderer.draw_world(foods, nxers, rankings(), alive_count, deaths_count, births_count, paused, effects, step_tick, GlobalTimeSteps, game_over, game_index, best_scores)
-              # --- GENERATE FINAL STATS ---
-        # Calculate end-of-game statistics to return to TestMode
+            # Update NxEr stats in logger
+            for a in nxers.values():
+                data_logger.update_nxer_stats(a)
+        
+        # --- FORCE FULL SAVE AT END OF GAME ---        
+        if auto_save_prefix:
+            final_save_name = f"{auto_save_prefix}_Final.json"
+            save_state(final_save_name)
+        
+        # --- GENERATE FINAL STATS ---        
         update_all_time_best()
         active_agents = [a for a in nxers.values() if a.alive]
         
@@ -2566,14 +4132,14 @@ def run_config_screen() -> Optional[Dict[str, any]]:
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 16); title_font = pygame.font.SysFont("consolas", 32, bold=True)
     # Define the parameters that will be configurable via sliders.
-    param_specs = [("World Size", 30, 100, 50, True, lambda x: x), ("Sea Percentage", 20, 80, 55, True, lambda x: x / 100.0), ("Rock Percentage", 1, 10, 2, True, lambda x: x / 100.0),
-     ("Starting NxErs", 10, 100, 70, True, lambda x: x), ("Food Sources", 50, 300, 250, True, lambda x: x), ("Food Respawn", 200, 600, 400, True, lambda x: x),
-     ("Start Food", 25, 200, 150, True, lambda x: float(x)), ("Max Neurons", 5, 35, 25, True, lambda x: x), ("Global Time Steps", 30, 90, 60, True, lambda x: x),
-      ("Mate Cooldown (sec)", 6, 20, 12, True, lambda x: x)]
+    param_specs = [("World Size", 30, 150, 50, True, lambda x: x), ("Sea Percentage", 20, 80, 55, True, lambda x: x / 100.0), ("Rock Percentage", 1, 10, 2, True, lambda x: x / 100.0),
+     ("Starting NxErs", 1, 100, 20, True, lambda x: x), ("Food Sources", 25, 300, 50, True, lambda x: x), ("Food Respawn", 200, 600, 400, True, lambda x: x),
+     ("Start Food", 25, 200, 25, True, lambda x: float(x)), ("Max Neurons", 5, 50, 50, True, lambda x: x), ("Global Time Steps", 30, 90, 60, True, lambda x: x),
+      ("Mate Cooldown (sec)", 6, 20, 12, True, lambda x: x), ("Log Level (1-2)", 1, 2, 2, True, lambda x: x)]
     screen_width, screen_height = screen.get_size()
     slider_container_width = 700; slider_width = 600
     slider_start_x = (screen_width - slider_container_width) // 2 + (slider_container_width - slider_width) // 2
-    start_y = 200; slider_height = 50
+    start_y = 130; slider_height = 50
     sliders = []
     for i, (label, min_val, max_val, default_val, is_int, _) in enumerate(param_specs):
         rect = pygame.Rect(slider_start_x, start_y + i * slider_height, slider_width, 20)
@@ -2612,8 +4178,10 @@ def run_config_screen() -> Optional[Dict[str, any]]:
                     for i, slider in enumerate(sliders): # Collect values from all sliders.
                         raw_value = slider.get_value()
                         conversion_func = param_specs[i][5]
-                        param_name = ["NxWorldSize", "NxWorldSea", "NxWorldRocks", "StartingNxErs", "MaxFood", "FoodRespan", "StartFood", "MaxNeurons", "GlobalTimeSteps", "MateCooldownSeconds"][i]
+                        param_name = ["NxWorldSize", "NxWorldSea", "NxWorldRocks", "StartingNxErs", "MaxFood", "FoodRespan", "StartFood", "MaxNeurons", "GlobalTimeSteps", "MateCooldownSeconds", "LogLevel"][i]
                         params[param_name] = conversion_func(raw_value)
+                    log_level = params.pop("LogLevel", 2)
+                    set_data_logger_level(log_level)
                     return params # Return the dictionary of parameters to the main function.
                 elif test_button_rect.collidepoint(event.pos):
                     # Trigger Test Mode with slider values
