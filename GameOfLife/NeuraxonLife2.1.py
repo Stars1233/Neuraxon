@@ -1,11 +1,11 @@
-# Neuraxon Game of Life v.2.04 (Research Version): Enhanced DataLogger with in depth dynamics and updated save states
+# Neuraxon Game of Life v.2.1 (Research Version): Enhanced DataLogger with in depth dynamics and updated save states
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.01:  Added Metabolic Rate to the network parameters and calculations replacing  death by inactivity 
 # New features in V2.02:  Fixed the Dopamine LTD and LTP thresholds to prevent always-on depression and always-on potentiation
 # New features in V2.03:  Improved save/load functionality including spike history, pre/post traces, state history and activation_history 
-# New features in V2.04:  Increased metabolic ramp to avoid dead agents,  Added autoSave and Level 2 logging default with in depth dynamics Increases Log size by 10x aprox
+# New features in V2.1:  Increased metabolic ramp to avoid dead agents,  Added autoSave and Level 2 logging default with in depth dynamics Increases Log size by 10x aprox
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
