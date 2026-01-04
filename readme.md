@@ -8,12 +8,13 @@
 <a href="https://www.researchgate.net/publication/397331336_Neuraxon"><img src="https://img.shields.io/badge/Paper-ResearchGate-00CCBB.svg"></a>
 <a href="https://github.com/DavidVivancos/Neuraxon"><img alt="GitHub stars" src="https://img.shields.io/github/stars/DavidVivancos/Neuraxon?style=social"></a>
 <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2--1M-orange"></a>
+  <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.1-TimeSeries"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2.1-orange"></a>
 </div>
 
 <br>
 New Research  2.1 and Lite version 2.0<br>
 Experience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).<br>
-Jan 4th 2025 v 2.1 Research update.
+Jan 4th 2025 v 2.1 Research update. and new HF Dataset https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.1-TimeSeries
 
 ### Lite Version Features, (Research edition bellow):
 - 🌍 **Procedurally Generated Worlds**: Island-like terrains with land, sea, and obstacles and new Earth mode in V 2.0
@@ -518,6 +519,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
