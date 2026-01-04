@@ -79,7 +79,7 @@ class DataLogger:
             'total_dendritic_spikes': 0,
             'total_homeostatic_adjustments': 0,
             'peak_phase_coherence': 0.0,
-            # NEW: Updated Save states in v 2.04
+            # NEW: Updated Save states in v 2.1
             'total_threshold_modulations': 0,
             'total_associativity_events': 0,
             'total_metabotropic_activations': 0,
@@ -1568,10 +1568,10 @@ class Synapse:
             'learning_rate': self.learning_rate, 'plasticity_threshold': self.plasticity_threshold,
             'pre_trace': self.pre_trace,# Updated Save states in v 2.03
         'post_trace': self.post_trace,# Updated Save states in v 2.03
-        'pre_trace_ltd': self.pre_trace_ltd,# Updated Save # Updated Save states in v 2.04
-        'associative_strength': self.associative_strength, # Updated Save states in v 2.04
+        'pre_trace_ltd': self.pre_trace_ltd,# Updated Save # Updated Save states in v 2.1
+        'associative_strength': self.associative_strength, # Updated Save states in v 2.1
          # NEW: Save neighbor synapse references as (pre_id, post_id) tuples
-        'neighbor_synapse_ids': [(ns.pre_id, ns.post_id) for ns in self.neighbor_synapses], # Updated Save states in v 2.04
+        'neighbor_synapse_ids': [(ns.pre_id, ns.post_id) for ns in self.neighbor_synapses], # Updated Save states in v 2.1
         }
 
 class Neuraxon:
@@ -1710,7 +1710,7 @@ class Neuraxon:
             if logger.log_level >= 2:
                 logger.log_spontaneous_event(0, self.id, self.membrane_potential)
         
-        # NEW: Log subthreshold integration events Updated Save states in v 2.04
+        # NEW: Log subthreshold integration events Updated Save states in v 2.1
         logger = get_data_logger()
         if logger.log_level >= 2:
             # If we're in neutral state but close to threshold
@@ -1730,14 +1730,14 @@ class Neuraxon:
                         theta_inh, distance_to_inh
                     )
         
-        # NEW: Log significant autoreceptor effects Updated Save states in v 2.04
+        # NEW: Log significant autoreceptor effects Updated Save states in v 2.1
         if abs(self.autoreceptor) > 0.1:
             logger = get_data_logger()
             if logger.log_level >= 2:
                 threshold_effect = -0.1 * self.autoreceptor
                 logger.log_autoreceptor_event(0, self.id, self.autoreceptor, threshold_effect)
         
-        # NEW: Log threshold modulation events (when crossing state boundaries) Updated Save states in v 2.04
+        # NEW: Log threshold modulation events (when crossing state boundaries) Updated Save states in v 2.1
         if prev_state != self.trinary_state:
             logger = get_data_logger()
             if logger.log_level >= 2:
@@ -1748,7 +1748,7 @@ class Neuraxon:
                     theta_exc, ach_contrib, autoreceptor_contrib
                 )
         
-        # NEW: Log Dendritic Spikes Updated Save states in v 2.04
+        # NEW: Log Dendritic Spikes Updated Save states in v 2.1
         # Check recent activity in branches to log events
         logger = get_data_logger()
         if logger.log_level >= 2:
@@ -1799,7 +1799,7 @@ class Neuraxon:
             'recovery_rate': self.recovery_rate,
             'state_history': list(self.state_history), # Updated Save states in v 2.03
             'autoreceptor': self.autoreceptor, # Updated Save states in v 2.03
-            'last_firing_time': self.last_firing_time  # Updated Save states in v 2.04
+            'last_firing_time': self.last_firing_time  # Updated Save states in v 2.1
         }
 
 
@@ -2198,12 +2198,12 @@ class NeuraxonNetwork:
         """Serializes the entire network state into a single dictionary."""
         return {'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 
         'branching_ratio': self.branching_ratio, 
-        'modulator_grid': self.modulator_grid.tolist(),  # Updated Save states in v 2.04
-        'oscillator_phase_offsets': self.oscillator_phase_offsets,  # Updated Save states in v 2.04
+        'modulator_grid': self.modulator_grid.tolist(),  # Updated Save states in v 2.1
+        'oscillator_phase_offsets': self.oscillator_phase_offsets,  # Updated Save states in v 2.1
           'itu_circles': [{
             'circle_id': c.circle_id,
-            'fitness_history': c.fitness_history,  # Updated Save states in v 2.04
-            'mutation_rate': c.mutation_rate  # Updated Save states in v 2.04
+            'fitness_history': c.fitness_history,  # Updated Save states in v 2.1
+            'mutation_rate': c.mutation_rate  # Updated Save states in v 2.1
         } for c in self.itu_circles],
         'activation_history': list(self.activation_history)    # Updated Save states in v 2.03
          }
@@ -2300,10 +2300,10 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
         # Temporarily store neighbor IDs for second pass
         s._saved_neighbor_ids = sd.get('neighbor_synapse_ids', None)
         net.synapses.append(s)
-    # Build a lookup dictionary for fast synapse retrieval (Updated Save states in v 2.04)
+    # Build a lookup dictionary for fast synapse retrieval (Updated Save states in v 2.1)
     synapse_lookup = {(s.pre_id, s.post_id): s for s in net.synapses}
     
-    # Second pass: Restore neighbor_synapses relationships (Updated Save states in v 2.04)
+    # Second pass: Restore neighbor_synapses relationships (Updated Save states in v 2.1)
     for s in net.synapses:
         if hasattr(s, '_saved_neighbor_ids') and s._saved_neighbor_ids is not None:
             # Restore from saved IDs
@@ -2330,18 +2330,18 @@ def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
     net.total_energy_consumed = d.get('energy_consumed', 0.0)
     net.branching_ratio = d.get('branching_ratio', 1.0)
     
-    # ADD: Restore activation_history v2.04
+    # ADD: Restore activation_history v2.1
     if 'activation_history' in d:
         net.activation_history = deque(d['activation_history'], maxlen=1000)
-     # ADD: Restore modulator diffusion grid v2.04
+     # ADD: Restore modulator diffusion grid v2.1
     if 'modulator_grid' in d:
         net.modulator_grid = np.array(d['modulator_grid'])
     
-    # ADD: Restore oscillator phase offsets v2.04
+    # ADD: Restore oscillator phase offsets v2.1
     if 'oscillator_phase_offsets' in d:
         net.oscillator_phase_offsets = tuple(d['oscillator_phase_offsets'])
     
-    # ADD: Restore ITU circles v2.04
+    # ADD: Restore ITU circles v2.1
     if 'itu_circles' in d and isinstance(d['itu_circles'], list):
         for i, circle_data in enumerate(d['itu_circles']):
             if i < len(net.itu_circles):
