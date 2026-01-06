@@ -8,7 +8,7 @@
 <a href="https://www.researchgate.net/publication/397331336_Neuraxon"><img src="https://img.shields.io/badge/Paper-ResearchGate-00CCBB.svg"></a>
 <a href="https://github.com/DavidVivancos/Neuraxon"><img alt="GitHub stars" src="https://img.shields.io/github/stars/DavidVivancos/Neuraxon?style=social"></a>
 <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2--1M-orange"></a>
-  <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.1-TimeSeries"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2.1-TimeSeries-orange"></a>
+  <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.1-TimeSeries"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2.1_Timeseries-orange"></a>
 </div>
 
 <br>
@@ -519,6 +519,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
