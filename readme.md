@@ -12,12 +12,13 @@
 </div>
 
 <br>
-New Research  2.21 and Lite version 2.0<br>
+New Research  2.22 and Lite version 2.0<br>
 Experience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).<br>
 Jan 4th 2026 v 2.1 Research update. and new HF Dataset https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.1-TimeSeries<br>
 Jan 7th 2026 v 2.2 Research update. Enhanced Full Fledged Inheritance <br>
-Jan 8th 2026 v 2.21: New Nxrs Naming convention for Long Game Tracking Through sesions no more duplicate names in next rounds
-
+Jan 8th 2026:<br>
+-> v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions no more duplicate names in next rounds<br>
+-> v2.22: Extra Loging enabled up to 1000s timesteps configurable
 
 ### Lite Version Features, (Research edition bellow):
 - 🌍 **Procedurally Generated Worlds**: Island-like terrains with land, sea, and obstacles and new Earth mode in V 2.0
@@ -323,7 +324,7 @@ The hybrid creates "living neural tissue" that:
 - Exhibits emergent complexity and self-organization
 
 
-## 🎮 Neuraxon Game of Life 2.21  
+## 🎮 Neuraxon Game of Life 2.22  
 
 **A complete artificial life simulation powered by Neuraxon networks!**
 
@@ -333,6 +334,7 @@ The hybrid creates "living neural tissue" that:
 * 2.1 version update:  Increased metabolic ramp to avoid dead agents,  Added autoSave and Level 2 logging default with in depth dynamics Increases Log size by 10x aprox
 * 2.2 version update: Enhanced Full Fledged Inheritance
 * 2.21 version update: New Nxrs Naming convention for Long Game Tracking Through sesions no more duplicate names in next rounds
+* 2.22: Extra Loging enabled up to 1000s of timesteps configurable
 
 The **Neuraxon Game of Life 2.21 ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
 
@@ -524,6 +526,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
