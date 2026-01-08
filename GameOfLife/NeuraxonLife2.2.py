@@ -1,9 +1,10 @@
-# Neuraxon Game of Life v.2.21 (Research Version): New Nxrs Naming convention
+# Neuraxon Game of Life v.2.22 (Research Version): Extra Loging enabled up to 10000 timesteps configurable
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.2:  Enhance Full Feldged Inheritance
 # New features in v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions
+# New features in v2.22: Extra Loging enabled up to 10000 timesteps configurable
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -323,38 +324,176 @@ class DataLogger:
             'itu_mutation_events': [],
             'itu_pruning_events': [],
         }
+        self.per_nxer_time_series: Dict[int, Dict[str, List]] = {}
+    
+    def _ensure_nxer_series(self, nxer_id: int, nxer_name: str):
+        """Initialize time series structure for a specific NxEr if not exists."""
+        if nxer_id not in self.per_nxer_time_series:
+            self.per_nxer_time_series[nxer_id] = {
+                'name': nxer_name,
+                'ticks': [],
+                'alive': [],
+                'food': [],
+                'pos_x': [],
+                'pos_y': [],
+                'network_activity': [],
+                'branching_ratio': [],
+                'total_energy': [],
+                'average_energy': [],
+                'dopamine': [],
+                'serotonin': [],
+                'acetylcholine': [],
+                'norepinephrine': [],
+                'membrane_potential_mean': [],
+                'membrane_potential_std': [],
+                'excitatory_fraction': [],
+                'inhibitory_fraction': [],
+                'neutral_fraction': [],
+                'mean_w_fast': [],
+                'mean_w_slow': [],
+                'mean_w_meta': [],
+                'phase_coherence': [],
+                'fitness_score': [],
+                'food_found': [],
+                'explored': [],
+                'mates_performed': [],
+            }
+    def _log_nxer_individual(self, tick: int, a: 'NxEr'):
+        """Log individual NxEr's data independently."""
+        if not a.alive:
+            return  # Don't log dead NxErs at all
+        self._ensure_nxer_series(a.id, a.name)
+        series = self.per_nxer_time_series[a.id]
+        
+        series['ticks'].append(tick)
+        series['alive'].append(a.alive)
+        series['food'].append(a.food)
+        series['pos_x'].append(a.pos[0])
+        series['pos_y'].append(a.pos[1])
+        series['fitness_score'].append(a.stats.fitness_score)
+        series['food_found'].append(a.stats.food_found)
+        series['explored'].append(a.stats.explored)
+        series['mates_performed'].append(a.stats.mates_performed)
+        
+        if not a.alive:
+            # Append zeros for dead NxEr's network data
+            for key in ['network_activity', 'branching_ratio', 'total_energy', 'average_energy',
+                        'dopamine', 'serotonin', 'acetylcholine', 'norepinephrine',
+                        'membrane_potential_mean', 'membrane_potential_std',
+                        'excitatory_fraction', 'inhibitory_fraction', 'neutral_fraction',
+                        'mean_w_fast', 'mean_w_slow', 'mean_w_meta', 'phase_coherence']:
+                series[key].append(0.0)
+            return
+        
+        net = a.net
+        active_neurons = [n for n in net.all_neurons if n.is_active]
+        active_synapses = [s for s in net.synapses if s.integrity > 0]
+        
+        if not active_neurons:
+            for key in ['network_activity', 'branching_ratio', 'total_energy', 'average_energy',
+                        'dopamine', 'serotonin', 'acetylcholine', 'norepinephrine',
+                        'membrane_potential_mean', 'membrane_potential_std',
+                        'excitatory_fraction', 'inhibitory_fraction', 'neutral_fraction',
+                        'mean_w_fast', 'mean_w_slow', 'mean_w_meta', 'phase_coherence']:
+                series[key].append(0.0)
+            return
+        
+        # Network activity
+        activity = sum(abs(n.trinary_state) for n in active_neurons) / len(active_neurons)
+        series['network_activity'].append(activity)
+        series['branching_ratio'].append(net.branching_ratio)
+        
+        # Energy
+        total_energy = sum(n.energy_level for n in active_neurons)
+        series['total_energy'].append(total_energy)
+        series['average_energy'].append(total_energy / len(active_neurons))
+        
+        # Neuromodulators
+        series['dopamine'].append(net.neuromodulators.get('dopamine', 0.0))
+        series['serotonin'].append(net.neuromodulators.get('serotonin', 0.0))
+        series['acetylcholine'].append(net.neuromodulators.get('acetylcholine', 0.0))
+        series['norepinephrine'].append(net.neuromodulators.get('norepinephrine', 0.0))
+        
+        # Membrane potentials
+        membrane_potentials = [n.membrane_potential for n in active_neurons]
+        series['membrane_potential_mean'].append(np.mean(membrane_potentials))
+        series['membrane_potential_std'].append(np.std(membrane_potentials))
+        
+        # Trinary states
+        states = [n.trinary_state for n in active_neurons]
+        series['excitatory_fraction'].append(sum(1 for s in states if s == 1) / len(states))
+        series['inhibitory_fraction'].append(sum(1 for s in states if s == -1) / len(states))
+        series['neutral_fraction'].append(sum(1 for s in states if s == 0) / len(states))
+        
+        # Synaptic weights
+        if active_synapses:
+            series['mean_w_fast'].append(np.mean([s.w_fast for s in active_synapses]))
+            series['mean_w_slow'].append(np.mean([s.w_slow for s in active_synapses]))
+            series['mean_w_meta'].append(np.mean([s.w_meta for s in active_synapses]))
+        else:
+            series['mean_w_fast'].append(0.0)
+            series['mean_w_slow'].append(0.0)
+            series['mean_w_meta'].append(0.0)
+        
+        # Phase coherence
+        phases = [n.phase for n in active_neurons]
+        if len(phases) >= 2:
+            import cmath
+            complex_phases = [cmath.exp(1j * p) for p in phases]
+            phase_coherence = abs(sum(complex_phases) / len(complex_phases))
+        else:
+            phase_coherence = 0.0
+        series['phase_coherence'].append(phase_coherence)
     
     def set_level(self, level: int):
         new_level = max(1, min(2, level))
         if new_level != self.log_level:
             self.log_level = new_level
+            self.game_metadata['log_level'] = self.log_level
             if new_level >= 2 and not hasattr(self, 'time_series'):
                 self._init_level2_data()
     
-    def log_tick(self, tick: int, network: Optional['NeuraxonNetwork'], nxers: dict = None):
+    def log_tick(self, tick: int, nxers: dict = None):
         self.summary['total_ticks'] = tick
-        if network:
-            active_neurons = [n for n in network.all_neurons if n.is_active]
-            if active_neurons:
-                activity = sum(abs(n.trinary_state) for n in active_neurons) / len(active_neurons)
+        
+        all_nxers = list((nxers or {}).values()) if nxers else []
+        alive_nxers = [a for a in all_nxers if a.alive]
+        
+        if alive_nxers:
+            # Aggregate across all alive NxErs
+            all_active_neurons = []
+            for a in alive_nxers:
+                all_active_neurons.extend([n for n in a.net.all_neurons if n.is_active])
+            
+            if all_active_neurons:
+                activity = sum(abs(n.trinary_state) for n in all_active_neurons) / len(all_active_neurons)
                 self.summary['peak_network_activity'] = max(self.summary['peak_network_activity'], activity)
-            if network.branching_ratio > 0:
+            
+            # Aggregate branching ratio
+            branching_ratios = [a.net.branching_ratio for a in alive_nxers if a.net.branching_ratio > 0]
+            if branching_ratios:
+                avg_br = sum(branching_ratios) / len(branching_ratios)
                 self.summary['average_branching_ratio'] = (
                     (self.summary['average_branching_ratio'] * self.summary['branching_ratio_samples'] + 
-                     network.branching_ratio) / (self.summary['branching_ratio_samples'] + 1)
+                    avg_br) / (self.summary['branching_ratio_samples'] + 1)
                 )
                 self.summary['branching_ratio_samples'] += 1
+            
+            # Aggregate neuromodulators (average across all NxErs)
             for mod in ['dopamine', 'serotonin', 'acetylcholine', 'norepinephrine']:
-                level = network.neuromodulators.get(mod, 0.0)
-                self.summary['neuromodulator_peaks'][mod] = max(self.summary['neuromodulator_peaks'][mod], level)
-        if self.log_level >= 2 and network:
-            self._log_tick_level2(tick, network, nxers or {})
+                levels = [a.net.neuromodulators.get(mod, 0.0) for a in alive_nxers]
+                avg_level = sum(levels) / len(levels) if levels else 0.0
+                self.summary['neuromodulator_peaks'][mod] = max(self.summary['neuromodulator_peaks'][mod], avg_level)
+        
+        if self.log_level >= 2:
+            self._log_tick_level2(tick, alive_nxers)
+            for a in alive_nxers:
+                self._log_nxer_individual(tick, a)
     
-    def _log_tick_level2(self, tick: int, network: 'NeuraxonNetwork', nxers: dict):
-        """Capture detailed time series data each tick."""
+    def _log_tick_level2(self, tick: int, alive_nxers: list):
+        """Capture detailed time series data each tick from ALL alive NxErs."""
         import numpy as np
         import cmath
-        from scipy.stats import entropy as scipy_entropy  # May need fallback
         
         # Trim old data if needed
         if len(self.time_series['ticks']) >= self.max_history_length:
@@ -367,72 +506,101 @@ class DataLogger:
         self.time_series['ticks'].append(tick)
         self.time_series['timestamps'].append(time.time() - self.start_time)
         
-        active_neurons = [n for n in network.all_neurons if n.is_active]
-        if not active_neurons:
-            # Append zeros/defaults if no active neurons
+        if not alive_nxers:
+            # Append zeros/defaults if no alive NxErs
             for key in self.time_series:
                 if key not in ['ticks', 'timestamps']:
                     self.time_series[key].append(0.0)
             return
         
-        # Get active synapses for this tick
-        active_synapses = [s for s in network.synapses if s.integrity > 0]
+        # Collect all active neurons and synapses across ALL alive NxErs
+        all_active_neurons = []
+        all_active_synapses = []
+        all_networks = []
         
-        # Track LTP/LTD events this tick
-        ltp_this_tick = 0
-        ltd_this_tick = 0
-
-        # === EXISTING METRICS ===
-        activity = sum(abs(n.trinary_state) for n in active_neurons) / len(active_neurons)
+        for a in alive_nxers:
+            net = a.net
+            all_networks.append(net)
+            all_active_neurons.extend([n for n in net.all_neurons if n.is_active])
+            all_active_synapses.extend([s for s in net.synapses if s.integrity > 0])
+        
+        if not all_active_neurons:
+            for key in self.time_series:
+                if key not in ['ticks', 'timestamps']:
+                    self.time_series[key].append(0.0)
+            return
+        
+        # === EXISTING METRICS (now aggregated) ===
+        activity = sum(abs(n.trinary_state) for n in all_active_neurons) / len(all_active_neurons)
         self.time_series['network_activity'].append(activity)
-        self.time_series['branching_ratio'].append(network.branching_ratio)
         
-        energy_status = network.get_energy_status()
-        self.time_series['total_energy'].append(energy_status.get('total_energy', 0))
-        self.time_series['average_energy'].append(energy_status.get('average_energy', 0))
-        self.time_series['energy_efficiency'].append(energy_status.get('efficiency', 0))
-        self.time_series['temporal_sync'].append(energy_status.get('temporal_sync', 0))
+        # Branching ratio (average across networks)
+        branching_ratios = [net.branching_ratio for net in all_networks]
+        self.time_series['branching_ratio'].append(np.mean(branching_ratios))
         
+        # Energy status (aggregate)
+        total_energy = sum(n.energy_level for n in all_active_neurons)
+        avg_energy = total_energy / len(all_active_neurons)
+        
+        # Efficiency calculation
+        energy_spent = sum(max(0, n.energy_baseline - n.energy_level) for n in all_active_neurons)
+        total_steps = sum(net.step_count for net in all_networks)
+        energy_spent += total_steps * 0.01 * len(all_active_neurons) / max(1, len(all_networks))
+        total_activation = sum(sum(net.activation_history) if net.activation_history else 0 for net in all_networks)
+        efficiency = total_activation / max(1, energy_spent) if energy_spent > 0 else 0.0
+        
+        self.time_series['total_energy'].append(total_energy)
+        self.time_series['average_energy'].append(avg_energy)
+        self.time_series['energy_efficiency'].append(efficiency)
+        
+        # Temporal sync (phase coherence across ALL neurons)
+        phases = [n.phase for n in all_active_neurons]
+        if len(phases) >= 2:
+            complex_phases = [cmath.exp(1j * p) for p in phases]
+            temporal_sync = abs(sum(complex_phases) / len(complex_phases))
+        else:
+            temporal_sync = 0.0
+        self.time_series['temporal_sync'].append(temporal_sync)
+        
+        # Neuromodulators (average across all networks)
         for mod in ['dopamine', 'serotonin', 'acetylcholine', 'norepinephrine']:
-            self.time_series[mod].append(network.neuromodulators.get(mod, 0.0))
+            levels = [net.neuromodulators.get(mod, 0.0) for net in all_networks]
+            self.time_series[mod].append(np.mean(levels))
         
-        self.time_series['oscillator_drive'].append(network._global_oscillatory_drive())
+        # Oscillator drive (average)
+        osc_drives = [net._global_oscillatory_drive() for net in all_networks]
+        self.time_series['oscillator_drive'].append(np.mean(osc_drives))
         
-        # === NEW: Oscillator Components (for CFC analysis) ===
-        t = network.time
-        low = math.sin(2.0 * math.pi * network.params.oscillator_low_freq * t + network.oscillator_phase_offsets[0])
-        mid = math.sin(2.0 * math.pi * network.params.oscillator_mid_freq * t + network.oscillator_phase_offsets[1])
-        high = math.sin(2.0 * math.pi * network.params.oscillator_high_freq * t + network.oscillator_phase_offsets[2])
+        # === OSCILLATOR COMPONENTS (use first network's time as reference) ===
+        ref_net = all_networks[0]
+        t = ref_net.time
+        low = math.sin(2.0 * math.pi * ref_net.params.oscillator_low_freq * t + ref_net.oscillator_phase_offsets[0])
+        mid = math.sin(2.0 * math.pi * ref_net.params.oscillator_mid_freq * t + ref_net.oscillator_phase_offsets[1])
+        high = math.sin(2.0 * math.pi * ref_net.params.oscillator_high_freq * t + ref_net.oscillator_phase_offsets[2])
         self.time_series['oscillator_low'].append(low)
         self.time_series['oscillator_mid'].append(mid)
         self.time_series['oscillator_high'].append(high)
         
-        # === NEW: Cross-Frequency Coupling (simplified PAC proxy) ===
-        # CFC: correlation between slow phase and fast amplitude
-        cfc_low_mid = abs(low) * abs(mid)  # Simplified PAC proxy
+        # === CROSS-FREQUENCY COUPLING ===
+        cfc_low_mid = abs(low) * abs(mid)
         cfc_mid_high = abs(mid) * abs(high)
         self.time_series['cfc_low_mid'].append(cfc_low_mid)
         self.time_series['cfc_mid_high'].append(cfc_mid_high)
         
-        # Phase coherence across neurons
-        phases = [n.phase for n in active_neurons]
+        # Phase coherence
         if len(phases) >= 2:
             complex_phases = [cmath.exp(1j * p) for p in phases]
             phase_coherence = abs(sum(complex_phases) / len(complex_phases))
-            
-            # NEW: Log phase synchronization events (Lower threshold for detection)
-            # If coherence is moderately high (>0.4), we consider this a synchronization event
             if phase_coherence > 0.4:
-                # Check if it wasn't already high to avoid spamming (simple hysteresis)
                 prev_coherence = self.time_series['phase_coherence'][-2] if len(self.time_series['phase_coherence']) > 1 else 0.0
                 if prev_coherence <= 0.4:
-                    self.log_phase_event(tick, "high_synchronization", phase_coherence, {'active_count': len(active_neurons)})
+                    self.log_phase_event(tick, "high_synchronization", phase_coherence, {'active_count': len(all_active_neurons)})
         else:
             phase_coherence = 0.0
         self.time_series['phase_coherence'].append(phase_coherence)
         
-        # === NEW: Trinary State Distributions ===
-        states = [n.trinary_state for n in active_neurons]
+        # === TRINARY STATE DISTRIBUTIONS ===
+        states = [n.trinary_state for n in all_active_neurons]
         excitatory_frac = sum(1 for s in states if s == 1) / len(states)
         inhibitory_frac = sum(1 for s in states if s == -1) / len(states)
         neutral_frac = sum(1 for s in states if s == 0) / len(states)
@@ -440,47 +608,45 @@ class DataLogger:
         self.time_series['inhibitory_fraction'].append(inhibitory_frac)
         self.time_series['neutral_fraction'].append(neutral_frac)
         
-        # === NEW: Autoreceptor Dynamics ===
-        autoreceptors = [n.autoreceptor for n in active_neurons]
+        # === AUTORECEPTOR DYNAMICS ===
+        autoreceptors = [n.autoreceptor for n in all_active_neurons]
         self.time_series['autoreceptor_mean'].append(np.mean(autoreceptors))
         self.time_series['autoreceptor_std'].append(np.std(autoreceptors))
         
-        # === NEW: Adaptation Dynamics ===
-        adaptations = [n.adaptation for n in active_neurons]
+        # === ADAPTATION DYNAMICS ===
+        adaptations = [n.adaptation for n in all_active_neurons]
         self.time_series['adaptation_mean'].append(np.mean(adaptations))
         
-        # === NEW: Membrane Potential Statistics ===
-        membrane_potentials = [n.membrane_potential for n in active_neurons]
+        # === MEMBRANE POTENTIAL STATISTICS ===
+        membrane_potentials = [n.membrane_potential for n in all_active_neurons]
         self.time_series['membrane_potential_mean'].append(np.mean(membrane_potentials))
         self.time_series['membrane_potential_std'].append(np.std(membrane_potentials))
         
-        # === NEW: Intrinsic Timescale Distribution ===
-        timescales = [n.intrinsic_timescale for n in active_neurons]
+        # === INTRINSIC TIMESCALE DISTRIBUTION ===
+        timescales = [n.intrinsic_timescale for n in all_active_neurons]
         self.time_series['mean_intrinsic_timescale'].append(np.mean(timescales))
         self.time_series['timescale_heterogeneity'].append(np.std(timescales) / max(0.01, np.mean(timescales)))
         
-        # === NEW: Synapse Statistics ===
-        active_synapses = [s for s in network.synapses if s.integrity > 0]
-        silent_count = sum(1 for s in active_synapses if s.is_silent)
-        modulatory_count = sum(1 for s in active_synapses if s.is_modulatory)
+        # === SYNAPSE STATISTICS ===
+        silent_count = sum(1 for s in all_active_synapses if s.is_silent)
+        modulatory_count = sum(1 for s in all_active_synapses if s.is_modulatory)
         self.time_series['silent_synapse_count'].append(silent_count)
-        self.time_series['active_synapse_count'].append(len(active_synapses) - silent_count)
+        self.time_series['active_synapse_count'].append(len(all_active_synapses) - silent_count)
         self.time_series['modulatory_synapse_count'].append(modulatory_count)
         
-        if active_synapses:
-            self.time_series['mean_synapse_integrity'].append(np.mean([s.integrity for s in active_synapses]))
+        if all_active_synapses:
+            self.time_series['mean_synapse_integrity'].append(np.mean([s.integrity for s in all_active_synapses]))
         else:
             self.time_series['mean_synapse_integrity'].append(0.0)
         
-        # === NEW: Dendritic Metrics ===
+        # === DENDRITIC METRICS ===
         all_branch_potentials = []
         all_plateau_potentials = []
         dendritic_spike_count = 0
-        for n in active_neurons:
+        for n in all_active_neurons:
             for b in n.dendritic_branches:
                 all_branch_potentials.append(b.branch_potential)
                 all_plateau_potentials.append(b.plateau_potential)
-                # Count dendritic spikes (branch potential exceeds threshold)
                 if abs(b.branch_potential) > b.branch_threshold:
                     dendritic_spike_count += 1
         
@@ -488,20 +654,15 @@ class DataLogger:
         self.time_series['mean_plateau_potential'].append(np.mean(all_plateau_potentials) if all_plateau_potentials else 0.0)
         self.time_series['dendritic_spike_count'].append(dendritic_spike_count)
         
-        # === NEW: Spontaneous vs Driven Firing (estimated) ===
-        # This is tracked via log_spontaneous_event calls from the Neuraxon class
-        # Here we just append placeholders that get updated
-        self.time_series['spontaneous_firing_count'].append(0)  # Will be incremented by events
+        # === SPONTANEOUS VS DRIVEN FIRING ===
+        self.time_series['spontaneous_firing_count'].append(0)
         self.time_series['driven_firing_count'].append(0)
         
-        # ============================================================
-        # NEW: PAPER SECTION 3 - Synaptic Weight Evolution
-        # ============================================================
-        if active_synapses:
-            # Multi-timescale weights
-            w_fast_vals = [s.w_fast for s in active_synapses]
-            w_slow_vals = [s.w_slow for s in active_synapses]
-            w_meta_vals = [s.w_meta for s in active_synapses]
+        # === SYNAPTIC WEIGHT EVOLUTION ===
+        if all_active_synapses:
+            w_fast_vals = [s.w_fast for s in all_active_synapses]
+            w_slow_vals = [s.w_slow for s in all_active_synapses]
+            w_meta_vals = [s.w_meta for s in all_active_synapses]
             
             self.time_series['mean_w_fast'].append(np.mean(w_fast_vals))
             self.time_series['mean_w_slow'].append(np.mean(w_slow_vals))
@@ -510,53 +671,45 @@ class DataLogger:
             self.time_series['std_w_slow'].append(np.std(w_slow_vals))
             self.time_series['std_w_meta'].append(np.std(w_meta_vals))
             
-            # Synaptic traces
-            pre_traces = [s.pre_trace for s in active_synapses]
-            post_traces = [s.post_trace for s in active_synapses]
-            pre_traces_ltd = [s.pre_trace_ltd for s in active_synapses]
+            pre_traces = [s.pre_trace for s in all_active_synapses]
+            post_traces = [s.post_trace for s in all_active_synapses]
+            pre_traces_ltd = [s.pre_trace_ltd for s in all_active_synapses]
             
             self.time_series['mean_pre_trace'].append(np.mean(pre_traces))
             self.time_series['mean_post_trace'].append(np.mean(post_traces))
             self.time_series['mean_pre_trace_ltd'].append(np.mean(pre_traces_ltd))
             self.time_series['std_pre_trace'].append(np.std(pre_traces))
             
-            # Weight change rates (from potential_delta_w)
-            delta_w_vals = [abs(s.potential_delta_w) for s in active_synapses]
+            delta_w_vals = [abs(s.potential_delta_w) for s in all_active_synapses]
             self.time_series['mean_delta_w'].append(np.mean(delta_w_vals))
             
-            # Learning rate modulation
-            lr_mods = [s.learning_rate_mod for s in active_synapses]
+            lr_mods = [s.learning_rate_mod for s in all_active_synapses]
             self.time_series['mean_learning_rate_mod'].append(np.mean(lr_mods))
             self.time_series['std_learning_rate_mod'].append(np.std(lr_mods))
             
-            # Ionotropic vs Metabotropic contributions
-            ionotropic_contrib = [abs(s.w_fast) + abs(s.w_slow) for s in active_synapses if not s.is_modulatory]
-            metabotropic_contrib = [abs(s.w_meta) for s in active_synapses if s.is_modulatory]
+            ionotropic_contrib = [abs(s.w_fast) + abs(s.w_slow) for s in all_active_synapses if not s.is_modulatory]
+            metabotropic_contrib = [abs(s.w_meta) for s in all_active_synapses if s.is_modulatory]
             
             self.time_series['ionotropic_contribution_mean'].append(
                 np.mean(ionotropic_contrib) if ionotropic_contrib else 0.0)
             self.time_series['metabotropic_contribution_mean'].append(
                 np.mean(metabotropic_contrib) if metabotropic_contrib else 0.0)
         else:
-            # Append zeros for all synapse-related metrics
             for key in ['mean_w_fast', 'mean_w_slow', 'mean_w_meta', 
-                       'std_w_fast', 'std_w_slow', 'std_w_meta',
-                       'mean_pre_trace', 'mean_post_trace', 'mean_pre_trace_ltd', 'std_pre_trace',
-                       'mean_delta_w', 'mean_learning_rate_mod', 'std_learning_rate_mod',
-                       'ionotropic_contribution_mean', 'metabotropic_contribution_mean']:
+                    'std_w_fast', 'std_w_slow', 'std_w_meta',
+                    'mean_pre_trace', 'mean_post_trace', 'mean_pre_trace_ltd', 'std_pre_trace',
+                    'mean_delta_w', 'mean_learning_rate_mod', 'std_learning_rate_mod',
+                    'ionotropic_contribution_mean', 'metabotropic_contribution_mean']:
                 self.time_series[key].append(0.0)
         
-        # ============================================================
-        # NEW: PAPER SECTION 4 - Plasticity and Associativity
-        # ============================================================
-        if active_synapses:
-            # Calculate associativity contributions
+        # === PLASTICITY AND ASSOCIATIVITY ===
+        if all_active_synapses:
             associativity_contribs = []
-            for s in active_synapses:
+            for s in all_active_synapses:
                 if s.neighbor_synapses:
                     neighbor_deltas = [ns.potential_delta_w for ns in s.neighbor_synapses[:3]]
                     if neighbor_deltas:
-                        contrib = network.params.associativity_strength * sum(
+                        contrib = ref_net.params.associativity_strength * sum(
                             dw / (i + 1) for i, dw in enumerate(neighbor_deltas))
                         associativity_contribs.append(abs(contrib))
             
@@ -568,31 +721,24 @@ class DataLogger:
             self.time_series['mean_associativity_contribution'].append(0.0)
             self.time_series['associativity_event_count'].append(0)
         
-        # LTP/LTD rates (will be updated by plasticity event logging)
         self.time_series['ltp_rate'].append(0)
         self.time_series['ltd_rate'].append(0)
         
-        # ============================================================
-        # NEW: PAPER SECTION 6 - Autocorrelation Windows (ACW)
-        # ============================================================
+        # === AUTOCORRELATION WINDOWS ===
         acw_estimates = []
         autocorr_coeffs = []
         
-        for n in active_neurons:
+        for n in all_active_neurons:
             if len(n.state_history) >= 10:
                 states = list(n.state_history)
                 states_a = states[:-1]
                 states_b = states[1:]
-                # Check BOTH arrays for variance
                 if np.std(states_a) < 1e-10 or np.std(states_b) < 1e-10:
                     continue
                 try:
-                    # Compute lag-1 autocorrelation
                     autocorr = np.corrcoef(states_a, states_b)[0, 1]
                     if not np.isnan(autocorr):
                         autocorr_coeffs.append(autocorr)
-                        # ACW estimate: timescale weighted by autocorrelation strength
-                        # Higher autocorr = longer memory window
                         acw = n.intrinsic_timescale * (1.0 + abs(autocorr))
                         acw_estimates.append(acw)
                 except:
@@ -611,18 +757,16 @@ class DataLogger:
         self.time_series['autocorrelation_coefficient_mean'].append(
             np.mean(autocorr_coeffs) if autocorr_coeffs else 0.0)
         
-        # ============================================================
-        # NEW: PAPER SECTIONS 1 & 3 - Threshold Modulation
-        # ============================================================
-        ach = network.neuromodulators.get('acetylcholine', 0.5)
+        # === THRESHOLD MODULATION ===
+        ach_levels = [net.neuromodulators.get('acetylcholine', 0.5) for net in all_networks]
+        ach = np.mean(ach_levels)
         
         theta_exc_effectives = []
         theta_inh_effectives = []
         ach_mods = []
         autoreceptor_mods = []
         
-        for n in active_neurons:
-            # Calculate effective thresholds as done in neuron update
+        for n in all_active_neurons:
             threshold_mod = (ach - 0.5) * 0.5
             ach_mods.append(threshold_mod)
             
@@ -640,101 +784,94 @@ class DataLogger:
         self.time_series['threshold_modulation_by_ach'].append(np.mean(ach_mods))
         self.time_series['threshold_modulation_by_autoreceptor'].append(np.mean(autoreceptor_mods))
         
-        # ============================================================
-        # NEW: PAPER SECTION 1 - Neuromodulator Spatial Dynamics
-        # ============================================================
+        # === NEUROMODULATOR SPATIAL DYNAMICS ===
         try:
-            # Grid entropy (measure of spatial heterogeneity)
-            grid_flat = network.modulator_grid.flatten()
-            grid_normalized = (grid_flat - grid_flat.min()) / (grid_flat.max() - grid_flat.min() + 1e-10)
-            # Simple entropy approximation using histogram
-            hist, _ = np.histogram(grid_normalized, bins=20, density=True)
-            hist = hist[hist > 0]  # Remove zeros
-            grid_entropy = -np.sum(hist * np.log(hist + 1e-10)) / np.log(20)  # Normalize
-            self.time_series['modulator_grid_entropy'].append(grid_entropy)
+            all_grid_entropies = []
+            all_grad_magnitudes = []
+            all_da_variances = []
+            all_ser_variances = []
             
-            # Spatial gradient magnitude
-            grad_y = np.diff(network.modulator_grid, axis=0)
-            grad_x = np.diff(network.modulator_grid, axis=1)
-            grad_magnitude = np.sqrt(np.mean(grad_y**2) + np.mean(grad_x**2))
-            self.time_series['modulator_grid_gradient_magnitude'].append(grad_magnitude)
+            for net in all_networks:
+                grid_flat = net.modulator_grid.flatten()
+                grid_normalized = (grid_flat - grid_flat.min()) / (grid_flat.max() - grid_flat.min() + 1e-10)
+                hist, _ = np.histogram(grid_normalized, bins=20, density=True)
+                hist = hist[hist > 0]
+                grid_entropy = -np.sum(hist * np.log(hist + 1e-10)) / np.log(20)
+                all_grid_entropies.append(grid_entropy)
+                
+                grad_y = np.diff(net.modulator_grid, axis=0)
+                grad_x = np.diff(net.modulator_grid, axis=1)
+                grad_magnitude = np.sqrt(np.mean(grad_y**2) + np.mean(grad_x**2))
+                all_grad_magnitudes.append(grad_magnitude)
+                
+                all_da_variances.append(np.var(net.modulator_grid[:, :, 0]))
+                all_ser_variances.append(np.var(net.modulator_grid[:, :, 1]))
             
-            # Per-modulator spatial variance
-            self.time_series['dopamine_spatial_variance'].append(
-                np.var(network.modulator_grid[:, :, 0]))
-            self.time_series['serotonin_spatial_variance'].append(
-                np.var(network.modulator_grid[:, :, 1]))
+            self.time_series['modulator_grid_entropy'].append(np.mean(all_grid_entropies))
+            self.time_series['modulator_grid_gradient_magnitude'].append(np.mean(all_grad_magnitudes))
+            self.time_series['dopamine_spatial_variance'].append(np.mean(all_da_variances))
+            self.time_series['serotonin_spatial_variance'].append(np.mean(all_ser_variances))
         except Exception:
             self.time_series['modulator_grid_entropy'].append(0.0)
             self.time_series['modulator_grid_gradient_magnitude'].append(0.0)
             self.time_series['dopamine_spatial_variance'].append(0.0)
             self.time_series['serotonin_spatial_variance'].append(0.0)
         
-        # ============================================================
-        # NEW: PAPER SECTION 3 - Silent Synapse Dynamics
-        # ============================================================
-        if active_synapses:
-            silent_count = sum(1 for s in active_synapses if s.is_silent)
-            silent_fraction = silent_count / len(active_synapses) if active_synapses else 0.0
+        # === SILENT SYNAPSE DYNAMICS ===
+        if all_active_synapses:
+            silent_count = sum(1 for s in all_active_synapses if s.is_silent)
+            silent_fraction = silent_count / len(all_active_synapses)
             self.time_series['silent_synapse_fraction'].append(silent_fraction)
         else:
             self.time_series['silent_synapse_fraction'].append(0.0)
         
-        # Transition counters (reset each tick, updated by events)
         self.time_series['silent_to_active_transitions'].append(0)
         self.time_series['active_to_silent_transitions'].append(0)
         
-        # ============================================================
-        # NEW: PAPER SECTION 5 - Subthreshold Integration
-        # ============================================================
+        # === SUBTHRESHOLD INTEGRATION ===
         subthreshold_count = 0
         near_threshold_count = 0
         
-        for n in active_neurons:
-            # Check if neuron is in subthreshold state but receiving input
+        for n in all_active_neurons:
             if n.trinary_state == 0:
                 theta_exc = n.firing_threshold_excitatory
                 theta_inh = n.firing_threshold_inhibitory
                 
-                # Near threshold: within 20% of either threshold
                 if n.membrane_potential > theta_exc * 0.8 or n.membrane_potential < theta_inh * 0.8:
                     near_threshold_count += 1
                     subthreshold_count += 1
         
         self.time_series['subthreshold_integration_count'].append(subthreshold_count)
         self.time_series['near_threshold_fraction'].append(
-            near_threshold_count / len(active_neurons) if active_neurons else 0.0)
+            near_threshold_count / len(all_active_neurons) if all_active_neurons else 0.0)
         
-        # ============================================================
-        # NEW: PAPER SECTION 7 - Extended Oscillator/PAC Metrics
-        # ============================================================
-        t = network.time
+        # === EXTENDED OSCILLATOR/PAC METRICS ===
+        t = ref_net.time
         
-        # Phase-Amplitude Coupling variants
-        delta = math.sin(2.0 * math.pi * 0.02 * t)  # ~0.02 Hz delta
-        theta_osc = math.sin(2.0 * math.pi * 0.08 * t)  # ~8 Hz theta proxy
-        gamma = math.sin(2.0 * math.pi * 5.0 * t)  # ~40 Hz gamma proxy
+        delta = math.sin(2.0 * math.pi * 0.02 * t)
+        theta_osc = math.sin(2.0 * math.pi * 0.08 * t)
+        gamma = math.sin(2.0 * math.pi * 5.0 * t)
         
-        # PAC: phase of slow modulates amplitude of fast
         pac_theta_gamma = abs(theta_osc) * abs(gamma)
         pac_delta_theta = abs(delta) * abs(theta_osc)
         
         self.time_series['pac_theta_gamma'].append(pac_theta_gamma)
         self.time_series['pac_delta_theta'].append(pac_delta_theta)
         
-        # Mean phase velocity across neurons
-        if len(active_neurons) >= 2:
-            phase_velocities = [n.natural_frequency * 2 * math.pi for n in active_neurons]
+        if len(all_active_neurons) >= 2:
+            phase_velocities = [n.natural_frequency * 2 * math.pi for n in all_active_neurons]
             self.time_series['mean_phase_velocity'].append(np.mean(phase_velocities))
         else:
             self.time_series['mean_phase_velocity'].append(0.0)
         
-        # ============================================================
-        # NEW: PAPER SECTION 8 - ITU/Aigarth Metrics
-        # ============================================================
-        if network.itu_circles:
+        # === ITU/AIGARTH METRICS ===
+        all_itu_circles = []
+        for net in all_networks:
+            all_itu_circles.extend(net.itu_circles)
+        
+        if all_itu_circles:
             fitness_vals = []
-            for circle in network.itu_circles:
+            for circle in all_itu_circles:
                 if circle.fitness_history:
                     fitness_vals.append(circle.fitness_history[-1])
             
@@ -748,14 +885,82 @@ class DataLogger:
             self.time_series['itu_mean_fitness'].append(0.0)
             self.time_series['itu_fitness_variance'].append(0.0)
         
-        # Mutation/pruning counters (reset each tick)
         self.time_series['itu_mutation_events'].append(0)
         self.time_series['itu_pruning_events'].append(0)
         
         # Take snapshots at intervals
         if tick - self.last_snapshot_tick >= self.snapshot_interval:
-            self._take_snapshot(tick, network, nxers)
+            self._take_snapshot_multi(tick, alive_nxers)
             self.last_snapshot_tick = tick
+    
+    def _take_snapshot_multi(self, tick: int, alive_nxers: list):
+        """Take detailed snapshots of ALL alive NxErs at intervals."""
+        
+        # Neuron snapshot - all neurons from all NxErs
+        neuron_states = {}
+        for a in alive_nxers:
+            for n in a.net.all_neurons:
+                neuron_states[f"{a.id}_{n.id}"] = {
+                    'nxer_id': a.id,
+                    'nxer_name': a.name,
+                    'neuron_id': n.id,
+                    'trinary_state': n.trinary_state,
+                    'membrane_potential': n.membrane_potential,
+                    'adaptation': n.adaptation,
+                    'autoreceptor': n.autoreceptor,
+                    'health': n.health,
+                    'energy_level': n.energy_level,
+                    'phase': n.phase,
+                    'is_active': n.is_active,
+                    'intrinsic_timescale': n.intrinsic_timescale,
+                    'dendritic_branches': [{
+                        'branch_id': b.branch_id,
+                        'branch_potential': b.branch_potential,
+                        'plateau_potential': b.plateau_potential,
+                        'branch_threshold': b.branch_threshold,
+                        'local_ca_influx': b.get_local_ca_influx()
+                    } for b in n.dendritic_branches]
+                }
+        self.neuron_snapshots.append({'tick': tick, 'neuron_states': neuron_states})
+        
+        # Synapse snapshot - sample from all NxErs
+        synapse_weights = {}
+        for a in alive_nxers:
+            sample_synapses = a.net.synapses[:50] if len(a.net.synapses) > 50 else a.net.synapses
+            for s in sample_synapses:
+                synapse_weights[f"{a.id}_{s.pre_id}_{s.post_id}"] = {
+                    'nxer_id': a.id,
+                    'nxer_name': a.name,
+                    'w_fast': s.w_fast,
+                    'w_slow': s.w_slow,
+                    'w_meta': s.w_meta,
+                    'integrity': s.integrity,
+                    'pre_trace': s.pre_trace,
+                    'post_trace': s.post_trace,
+                    'is_silent': s.is_silent,
+                    'is_modulatory': s.is_modulatory,
+                    'tau_fast': s.tau_fast,
+                    'tau_slow': s.tau_slow,
+                    'tau_meta': s.tau_meta,
+                    'learning_rate': s.learning_rate,
+                    'plasticity_threshold': s.plasticity_threshold,
+                    'potential_delta_w': s.potential_delta_w,
+                    'neighbor_count': len(s.neighbor_synapses),
+                }
+        self.synapse_snapshots.append({'tick': tick, 'synapse_weights': synapse_weights})
+        
+        # ITU fitness history from all NxErs
+        for a in alive_nxers:
+            for circle in a.net.itu_circles:
+                if circle.fitness_history:
+                    self.itu_fitness_history.append({
+                        'tick': tick,
+                        'nxer_id': a.id,
+                        'nxer_name': a.name,
+                        'circle_id': circle.circle_id,
+                        'fitness': circle.fitness_history[-1]
+                    })
+    
     
     def _take_snapshot(self, tick: int, network: 'NeuraxonNetwork', nxers: dict):
         """Take detailed snapshots at intervals."""
@@ -1109,38 +1314,47 @@ class DataLogger:
             serializable_synapse_snapshots = []
             for snapshot in self.synapse_snapshots:
                 serializable_weights = {}
-                for (pre, post), weights in snapshot.get('synapse_weights', {}).items():
-                    serializable_weights[f"{pre}_{post}"] = weights
+                # FIX: Check if key is tuple or string before unpacking
+                for key, weights in snapshot.get('synapse_weights', {}).items():
+                    if isinstance(key, tuple):
+                        # Handle old format or single-network format (pre, post)
+                        pre, post = key
+                        serializable_weights[f"{pre}_{post}"] = weights
+                    else:
+                        # Handle new format where key is already a string "nxerId_pre_post"
+                        serializable_weights[str(key)] = weights
+                        
                 serializable_synapse_snapshots.append({
                     'tick': snapshot['tick'],
                     'synapse_weights': serializable_weights
                 })
-            
-            data['level2'] = {
+            limit_logs = 10000 # Fix v2.22 to expand log limits 
+            data['level2'] = {                
                 # Existing
                 'time_series': self.time_series,
-                'plasticity_events': self.plasticity_events[-1000:],
-                'structural_events': self.structural_events[-500:],
-                'neuron_snapshots': self.neuron_snapshots[-50:],
-                'synapse_snapshots': serializable_synapse_snapshots[-50:],
-                'nxer_events': self.nxer_events[-500:],
-                'itu_fitness_history': self.itu_fitness_history[-200:],
-                'io_patterns': self.io_patterns[-500:],
+                'plasticity_events': self.plasticity_events[-limit_logs:],
+                'structural_events': self.structural_events[-limit_logs:],
+                'neuron_snapshots': self.neuron_snapshots[-limit_logs:],
+                'synapse_snapshots': serializable_synapse_snapshots[-limit_logs:],
+                'nxer_events': self.nxer_events[-limit_logs:],
+                'itu_fitness_history': self.itu_fitness_history[-limit_logs:],
+                'io_patterns': self.io_patterns[-limit_logs:],
                 
                 # NEW event logs
-                'silent_synapse_events': self.silent_synapse_events[-200:],
-                'spontaneous_events': self.spontaneous_events[-500:],
-                'homeostatic_events': self.homeostatic_events[-200:],
-                'dendritic_spike_events': self.dendritic_spike_events[-500:],
-                'autoreceptor_events': self.autoreceptor_events[-200:],
-                'neuromodulator_events': self.neuromodulator_events[-300:],
-                'phase_reset_events': self.phase_reset_events[-200:],
+                'silent_synapse_events': self.silent_synapse_events[-limit_logs:],
+                'spontaneous_events': self.spontaneous_events[-limit_logs:],
+                'homeostatic_events': self.homeostatic_events[-limit_logs:],
+                'dendritic_spike_events': self.dendritic_spike_events[-limit_logs:],
+                'autoreceptor_events': self.autoreceptor_events[-limit_logs:],
+                'neuromodulator_events': self.neuromodulator_events[-limit_logs:],
+                'phase_reset_events': self.phase_reset_events[-limit_logs:],
                 
                 # NEW event logs
-                'weight_evolution_events': self.weight_evolution_events[-500:],
-                'threshold_modulation_events': self.threshold_modulation_events[-300:],
-                'associativity_events': self.associativity_events[-300:],
-                'subthreshold_events': self.subthreshold_events[-300:],
+                'weight_evolution_events': self.weight_evolution_events[-limit_logs:],
+                'threshold_modulation_events': self.threshold_modulation_events[-limit_logs:],
+                'associativity_events': self.associativity_events[-limit_logs:],
+                'subthreshold_events': self.subthreshold_events[-limit_logs:],
+                'per_nxer_time_series': self.per_nxer_time_series,
             }
         return data
     
@@ -4661,10 +4875,10 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         break
             
             for _ in range(steps_to_process):
-                step_tick += 1
-                current_network = next(iter(nxers.values())).net if nxers else None
-                data_logger.log_tick(step_tick, current_network, nxers)
-                
+                step_tick += 1                
+                #current_network = next((a.net for a in nxers.values() if a.alive), None) #FIX v2.22
+                #data_logger.log_tick(step_tick, current_network, nxers)
+                data_logger.log_tick(step_tick, nxers)  #FIX v2.22
                 # --- A. Update Game World State & Agent Vitals ---
                 effects[:] = [ef for ef in effects if (step_tick - ef['start']) < GlobalTimeSteps]
                 for a in nxers.values():
@@ -4939,6 +5153,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     occ = occupant_at.get(tgt)
                     if occ is not None:
                         for (aid, O3, O4, tt) in lst:
+                            if aid in handled_swap: continue 
                             a = nxers[aid]; b = nxers.get(occ)
                             if not b: continue
                             prev = list(a.last_inputs); prev[0:3] = [-1, 1, (1 if tt == T_LAND else 0)]; a.last_inputs = tuple(prev)
