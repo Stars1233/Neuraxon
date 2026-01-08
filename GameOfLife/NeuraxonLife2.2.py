@@ -1,8 +1,9 @@
-# Neuraxon Game of Life v.2.2 (Research Version): Enhanced Inheritance
+# Neuraxon Game of Life v.2.21 (Research Version): New Nxrs Naming convention
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-# New features in V2.2:  Enhanced Full Fledged Inheritance
+# New features in V2.2:  Enhance Full Feldged Inheritance
+# New features in v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -22,6 +23,43 @@ try:
 except Exception as e:
     raise RuntimeError("This program requires pygame. Install with: pip install pygame") from e
 
+
+
+# ============================================================================
+# GLOBAL SESSION AND NAMING VARIABLES (NEW in V2.21)
+# ============================================================================
+_session_id: Optional[str] = None
+_global_name_counter: int = 0  # Tracks the next available name index (A=0, B=1, ..., Z=25, AA=26, etc.)
+_used_names: Set[str] = set()  # All names ever used in this session
+_clan_history: Dict[int, Dict] = {}  # clan_id -> {members: set, merged_from: list, created_at_round: int}
+_next_clan_id: int = 1
+_current_round: int = 1
+_game_id: str = ""
+_next_nxer_id: int = 0  # Globally unique NxEr ID counter
+
+def _generate_session_id() -> str:
+    """Generate a 10-digit random session ID."""
+    return "".join([str(random.randint(0, 9)) for _ in range(10)])
+
+def _get_next_global_name() -> str:
+    """Get the next unique uppercase name (A, B, ..., Z, AA, AB, ...)."""
+    global _global_name_counter, _used_names
+    name = _base26_name(_global_name_counter)
+    _global_name_counter += 1
+    _used_names.add(name)
+    return name
+
+def _reset_session_globals():
+    """Reset all session globals for a fresh start."""
+    global _session_id, _global_name_counter, _used_names, _clan_history, _next_clan_id, _current_round, _game_id, _next_nxer_id
+    _session_id = _generate_session_id()
+    _global_name_counter = 0
+    _used_names = set()
+    _clan_history = {}
+    _next_clan_id = 1
+    _current_round = 1
+    _game_id = "".join([str(random.randint(0, 9)) for _ in range(9)])
+    _next_nxer_id = 0
 
 # ============================================================================
 # DATALOGGER CLASS
@@ -543,9 +581,14 @@ class DataLogger:
         for n in active_neurons:
             if len(n.state_history) >= 10:
                 states = list(n.state_history)
+                states_a = states[:-1]
+                states_b = states[1:]
+                # Check BOTH arrays for variance
+                if np.std(states_a) < 1e-10 or np.std(states_b) < 1e-10:
+                    continue
                 try:
                     # Compute lag-1 autocorrelation
-                    autocorr = np.corrcoef(states[:-1], states[1:])[0, 1]
+                    autocorr = np.corrcoef(states_a, states_b)[0, 1]
                     if not np.isnan(autocorr):
                         autocorr_coeffs.append(autocorr)
                         # ACW estimate: timescale weighted by autocorrelation strength
@@ -2218,10 +2261,20 @@ class Neuraxon:
     def _update_autocorrelation(self):
         if len(self.state_history) >= 10:
             states = list(self.state_history)
-            autocorr = np.corrcoef(states[:-1], states[1:])[0, 1]
-            if not np.isnan(autocorr):
-                # Use individualized membrane_time_constant as base
-                self.intrinsic_timescale = self.membrane_time_constant * (1.0 + abs(autocorr) * 2.0)
+            # Check if data has variance (avoid zero std)
+            states_a = states[:-1]
+            states_b = states[1:]
+            if np.std(states_a) < 1e-10 or np.std(states_b) < 1e-10:
+                return
+            try:
+                autocorr = np.corrcoef(states_a, states_b)[0, 1]
+                if not np.isnan(autocorr):
+                    # ACW estimate: timescale weighted by autocorrelation strength
+                    # Higher autocorr = longer memory window
+                    acw = self.intrinsic_timescale * (1.0 + abs(autocorr))
+                    self.intrinsic_timescale = acw
+            except:
+                pass
     
     def update(self, synaptic_inputs: List[float], modulatory_inputs: List[float], external_input: float, neuromodulators: Dict[str, float], dt: float, global_osc: float):
         if not self.is_active or self.energy_level <= 0: return
@@ -3087,7 +3140,10 @@ class NxEr:
     dopamine_boost_ticks: int = 0
     _last_O4: int = 0
     mating_intent_until_tick: int = 0
-    parents: Tuple[Optional[int], Optional[int]] = (None, None)
+    parents: Tuple[Optional[str], Optional[str]] = (None, None)  # Parent names
+    ancestors: List[str] = field(default_factory=list)  # Full lineage (ancestor names)
+    rounds_survived: int = 0  # How many rounds this NxEr has survived
+    clan_id: Optional[int] = None  # Clan Heritage ID
     mate_cooldown_until_tick: int = 0
     last_move_tick: int = 0
     last_pos: Tuple[int, int] = (0, 0)
@@ -3289,7 +3345,7 @@ class Renderer:
         pygame.draw.rect(self.screen, (15, 15, 18), rect, border_radius=12)
         pygame.draw.rect(self.screen, (90, 90, 100), rect, 2, border_radius=12)
         title = self.big.render("All NxErs have perished.", True, (235, 235, 240))
-        subtitle = self.small.render("Restart? (Will do in 2 minutes if no response)", True, (220, 220, 220))
+        subtitle = self.small.render("Restart? (Will do in 10 seconds if no response)", True, (220, 220, 220))
         self.screen.blit(title, (rect.x + (rect.w - title.get_width()) // 2, rect.y + 28))
         self.screen.blit(subtitle, (rect.x + (rect.w - subtitle.get_width()) // 2, rect.y + 60))
         y = rect.y + 130
@@ -3376,6 +3432,7 @@ class Renderer:
             self.screen.blit(self.small.render(display_title, True, (180, 180, 180)), (x, y)); y += 18
             for name, val in rows[:3]:
                 base_name = name.replace(" [Die]", "")
+                base_name = base_name.split(" [", 1)[0].strip()   #now the round is emmbedd in the name in hud
                 dot_c = name2color.get(base_name, (200, 200, 200))
                 pygame.draw.circle(self.screen, dot_c, (x + 8, y + 8), 6)
                 name_text = self.small.render(f"{name}", True, (230, 230, 230))
@@ -3554,6 +3611,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
     GlobalTimeSteps = _clamp(int(GlobalTimeSteps), 30, 300)
     MateCooldownSeconds = _clamp(int(MateCooldownSeconds), 0, 300)
     if random_seed is not None: random.seed(int(random_seed))
+    # Initialize session globals
     
     mate_cooldown_ticks = MateCooldownSeconds * GlobalTimeSteps
     textures = {"TextureLand": TextureLand, "TextureSea": TextureSea, "TextureRock": TextureRock, "TextureFood": TextureFood, "TextureNxEr": TextureNxEr}
@@ -3569,6 +3627,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
     effects: List[dict] = []
     champion_counts: Dict[str, int] = {}
     game_index = 1
+    # Initialize session globals
+    global _session_id, _current_round, _game_id, _next_nxer_id
+    if _session_id is None:
+        _reset_session_globals()
+    _current_round = game_index
+    _game_id = "".join([str(random.randint(0, 9)) for _ in range(9)])
+
     all_time_best: Dict[str, List[NxEr]] = {'food_found': [], 'food_taken': [], 'explored': [], 'time_lived_s': [], 'mates_performed': [], 'fitness_score': []}
     
     # --- CLAN & DIRECTION GLOBALS ---
@@ -3729,8 +3794,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         return p
 
     
-    def make_nxer(idx: int) -> NxEr:
+    def make_nxer() -> NxEr:
         """Factory function to create a single new NxEr."""
+        global _next_clan_id, _clan_history, _next_nxer_id
+        
+        idx = _next_nxer_id
+        _next_nxer_id += 1
+        
         p = _random_params(MaxNeurons)
         net = NeuraxonNetwork(p)
         pos = find_free(allow_sea=True, allow_land=True) or (random.randrange(world.N), random.randrange(world.N))
@@ -3740,31 +3810,72 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         else: can_land, can_sea = True, False
         is_male = random.random() < 0.5
         
-        # UPDATED: Random attributes for Vision, Smell, Heading
+        # Use global name counter for unique name
+        name = _get_next_global_name()
+        
         vision = random.randint(2, 15)
         smell = random.randint(2, 5)
         heading = random.randint(0, 7)
         
-        nx = NxEr(id=idx, name=_base26_name(idx), color=_rand_color(list(used_colors)), pos=pos, can_land=can_land, can_sea=can_sea, net=net, food=float(StartFood), is_male=is_male, ticks_per_action=max(1, int(GlobalTimeSteps / max(1, p.simulation_steps))), stats=NxErStats(), visited=set([pos]), parents=(None, None), mate_cooldown_until_tick=0, last_move_tick=0, last_pos=pos,
-                  vision_range=vision, smell_radius=smell, heading=heading, clan_id=None)
+        # Create individual clan for this NxEr
+        clan_id = _next_clan_id
+        _next_clan_id += 1
+        _clan_history[clan_id] = {
+            'members': {name},
+            'merged_from': [],
+            'created_at_round': _current_round,
+            'active': True
+        }
+        
+        nx = NxEr(
+            id=_next_nxer_id, 
+            name=name, 
+            color=_rand_color(list(used_colors)), 
+            pos=pos, 
+            can_land=can_land, 
+            can_sea=can_sea, 
+            net=net, 
+            food=float(StartFood), 
+            is_male=is_male, 
+            ticks_per_action=max(1, int(GlobalTimeSteps / max(1, p.simulation_steps))), 
+            stats=NxErStats(), 
+            visited=set([pos]), 
+            parents=(None, None),
+            ancestors=[],  # No ancestors for original NxErs
+            rounds_survived=0,
+            mate_cooldown_until_tick=0, 
+            last_move_tick=0, 
+            last_pos=pos,
+            vision_range=vision, 
+            smell_radius=smell, 
+            heading=heading, 
+            clan_id=clan_id
+        )
         used_colors.add(nx.color)
         nx.last_inputs = (0, 0, 0, 0, 0, 0)
         return nx
     
     def spawn_child(A: NxEr, B: NxEr, near_pos: Tuple[int, int]) -> Optional[NxEr]:
         """Creates a new NxEr from two parents."""
-        nonlocal births_count, next_clan_id
+        nonlocal births_count
+        global _next_clan_id, _clan_history, _next_nxer_id
+        
         if len(nxers) >= MaxNxErs: return None
-        child_id = (max(nxers.keys()) + 1) if nxers else 0
-        child_net = Inheritance(A, B) # New 2.2
+        child_id = _next_nxer_id
+        _next_nxer_id += 1
+        child_net = Inheritance(A, B)
+        
+        # Terrain inheritance logic (unchanged)
         A_land_specialist = A.can_land and not A.can_sea
         A_sea_specialist = A.can_sea and not A.can_land
         B_land_specialist = B.can_land and not B.can_sea
         B_sea_specialist = B.can_sea and not B.can_land
         terrain_A = world.terrain(A.pos)
         terrain_B = world.terrain(B.pos)
-        is_shoreline_mating = (A_land_specialist and B_sea_specialist and terrain_A == T_LAND and terrain_B == T_SEA) or (A_sea_specialist and B_land_specialist and terrain_A == T_SEA and terrain_B == T_LAND)
-        if is_shoreline_mating: can_land, can_sea = True, True
+        is_seashore_mating = (A_land_specialist and B_sea_specialist and terrain_A == T_LAND and terrain_B == T_SEA) or \
+                            (A_sea_specialist and B_land_specialist and terrain_A == T_SEA and terrain_B == T_LAND)
+        if is_seashore_mating: 
+            can_land, can_sea = True, True
         else:
             if A_land_specialist and B_land_specialist: can_land, can_sea = True, False
             elif A_sea_specialist and B_sea_specialist: can_land, can_sea = False, True
@@ -3772,56 +3883,85 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                 can_land = A.can_land or B.can_land
                 can_sea = A.can_sea or B.can_sea
         if not (can_land or can_sea): can_land = True
+        
         is_male_child = random.random() < 0.5
         
-        # UPDATED: Clan Inheritance
-        family_clan = None
-        if A.clan_id is None and B.clan_id is None:
-            # First to mate start a new clan
-            family_clan = next_clan_id
-            A.clan_id = family_clan
-            B.clan_id = family_clan
-            next_clan_id += 1
-        elif A.clan_id is not None:
-            family_clan = A.clan_id
-            if B.clan_id is None: B.clan_id = family_clan
-        elif B.clan_id is not None:
-            family_clan = B.clan_id
-            if A.clan_id is None: A.clan_id = family_clan
+        # Build full ancestor list from both parents
+        child_ancestors = []
+        child_ancestors.append(A.name)
+        child_ancestors.append(B.name)
+        child_ancestors.extend(A.ancestors)
+        child_ancestors.extend(B.ancestors)
+        child_ancestors = list(dict.fromkeys(child_ancestors))  # Remove duplicates, preserve order (parents first)
         
-        # Inherit vision/smell
-        #vision = random.choice([A.vision_range, B.vision_range, random.randint(2, 15)])
-        #smell = random.choice([A.smell_radius, B.smell_radius, random.randint(2, 5)])
-        # New 2.2 50% chance without variation
+        # Clan merging: Create new clan from both parent clans
+        new_clan_id = _next_clan_id
+        _next_clan_id += 1
+        
+        old_clan_a = A.clan_id
+        old_clan_b = B.clan_id
+        
+        # Collect all members from both clans
+        all_members = set()
+        merged_from = []
+        
+        if old_clan_a is not None and old_clan_a in _clan_history:
+            all_members.update(_clan_history[old_clan_a]['members'])
+            merged_from.append(old_clan_a)
+            _clan_history[old_clan_a]['active'] = False
+            
+        if old_clan_b is not None and old_clan_b in _clan_history and old_clan_b != old_clan_a:
+            all_members.update(_clan_history[old_clan_b]['members'])
+            merged_from.append(old_clan_b)
+            _clan_history[old_clan_b]['active'] = False
+        
+        child_name = _get_next_global_name()  # Get name early so we can use it
+        all_members.add(child_name)  # Use name instead of ID
+        
+        # Create new clan
+        _clan_history[new_clan_id] = {
+            'members': all_members,
+            'merged_from': merged_from,
+            'created_at_round': _current_round,
+            'active': True
+        }
+        
+        # Update all members of both old clans to new clan
+        for member_id in all_members:
+            if member_id in nxers and nxers[member_id].alive:
+                nxers[member_id].clan_id = new_clan_id
+        
+        # child_name already generated above for clan tracking
+        
         vision = A.vision_range if random.random() < 0.5 else B.vision_range
         smell = A.smell_radius if random.random() < 0.5 else B.smell_radius
         heading = random.randint(0, 7)
         
-         # V 2.2  updates
         child = NxEr(
             id=child_id,
-            name=f"{_strip_leading_digits(A.name)}-{_strip_leading_digits(B.name)}",
+            name=child_name,
             color=_rand_color(list(RESERVED_COLORS) + [a.color for a in nxers.values()]),
             pos=near_pos,
             can_land=can_land,
             can_sea=can_sea,
-            net=child_net,  # Uses inherited network
+            net=child_net,
             food=0.0,
             is_male=is_male_child,
             ticks_per_action=max(1, int(GlobalTimeSteps / max(1, child_net.params.simulation_steps))),
             stats=NxErStats(),
             visited=set(),
-            parents=(A.id, B.id),
+            parents=(A.name, B.name),
+            ancestors=child_ancestors,
+            rounds_survived=0,
             mate_cooldown_until_tick=0,
             last_move_tick=step_tick,
             last_pos=near_pos,
             vision_range=vision,
             smell_radius=smell,
             heading=heading,
-            clan_id=family_clan
+            clan_id=new_clan_id
         )
         
-
         transfer = min(5.0, min(A.food / 2, B.food / 2))
         A.food -= transfer
         B.food -= transfer
@@ -3836,7 +3976,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         return child
         
     for i in range(StartingNxErs):
-        a = make_nxer(i)
+        a = make_nxer()
         nxers[a.id] = a
         occupied.add(a.pos)
         
@@ -3862,12 +4002,15 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
     
     # --- Save/Load Functions ---
     def save_nxer_to_file(a: NxEr, save_name: str = None):
-        default = save_name or f"nxer_{a.name}_{_now_str()}.json"
+        global _session_id
+        if _session_id is None:
+            _session_id = _generate_session_id()
+        default = save_name or f"{_session_id}_nxer_{a.name}_{_now_str()}.json"
         path = _pick_save_file(default)
         if not path: return
-        data = {"meta": {"created": _now_str(), "type": "NxEr"}, "nxer": {"id": a.id, "name": a.name, "color": a.color, "pos": a.pos, "can_land": a.can_land, "can_sea": a.can_sea, 
+        data = {"meta": {"created": _now_str(), "type": "NxEr", "session_id": _session_id, "game_id": _game_id}, "nxer": {"id": a.id, "name": a.name, "color": a.color, "pos": a.pos, "can_land": a.can_land, "can_sea": a.can_sea, 
         "food": a.food, "is_male": a.is_male, "alive": a.alive, "born_ts": a.born_ts, "died_ts": a.died_ts, "last_inputs": a.last_inputs, "last_outputs": a.last_outputs, "ticks_per_action": a.ticks_per_action, "tick_accum": a.tick_accum, "harvesting": a.harvesting, "mating_with": a.mating_with, "mating_end_tick": a.mating_end_tick, "visited": list(a.visited), "dopamine_boost_ticks": a.dopamine_boost_ticks, "_last_O4": a._last_O4, "mating_intent_until_tick": a.mating_intent_until_tick, "parents": list(a.parents) if a.parents else [None, None], "mate_cooldown_until_tick": a.mate_cooldown_until_tick, "last_move_tick": a.last_move_tick, "last_pos": a.last_pos, "stats": asdict(a.stats), "net": a.net.to_dict(),
-        "vision_range": a.vision_range, "smell_radius": a.smell_radius, "heading": a.heading, "clan_id": a.clan_id}}
+        "vision_range": a.vision_range, "smell_radius": a.smell_radius, "heading": a.heading, "clan_id": a.clan_id, "ancestors": a.ancestors, "rounds_survived": a.rounds_survived}}
         if get_data_logger().log_level >= 2:
             data["nxer"]["network_detailed"] = _extract_detailed_network_state(a.net)
         with open(path, "w") as f: json.dump(data, f)
@@ -3992,12 +4135,75 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         net.branching_ratio = detailed.get('branching_ratio', 1.0)
         
     def save_state(name=None):
-        name = name or f"nx_world_save_{_now_str()}.json"
-        data = {"meta": {"created": _now_str(), "step_tick": step_tick, "GlobalTimeSteps": GlobalTimeSteps, "births_count": births_count, "deaths_count": deaths_count, "game_index": game_index}, 
-        "world": {"N": world.N, "grid": world.grid},
-         "nxers": [{"id": a.id, "name": a.name, "color": a.color, "pos": a.pos, "can_land": a.can_land, "can_sea": a.can_sea, "food": a.food, "is_male": a.is_male, "alive": a.alive, "born_ts": a.born_ts, "died_ts": a.died_ts,
-          "last_inputs": a.last_inputs, "last_outputs": a.last_outputs, "ticks_per_action": a.ticks_per_action, "tick_accum": a.tick_accum, "harvesting": a.harvesting, "mating_with": a.mating_with, "mating_end_tick": a.mating_end_tick, "visited": list(a.visited), "dopamine_boost_ticks": a.dopamine_boost_ticks, "_last_O4": a._last_O4, "mating_intent_until_tick": a.mating_intent_until_tick, "parents": list(a.parents) if a.parents else [None, None], "mate_cooldown_until_tick": a.mate_cooldown_until_tick, "last_move_tick": a.last_move_tick, "last_pos": a.last_pos, "stats": asdict(a.stats), "net": a.net.to_dict(),
-        "vision_range": a.vision_range, "smell_radius": a.smell_radius, "heading": a.heading, "clan_id": a.clan_id} for a in nxers.values()], "foods": [{"id": f.id, "anchor": f.anchor, "pos": f.pos, "alive": f.alive, "respawn_at_tick": f.respawn_at_tick, "remaining": f.remaining, "progress": f.progress} for f in foods.values()], "all_time_best": {k: [{"name": a.name, "is_male": a.is_male, "stats": asdict(a.stats), "net": a.net.to_dict(), "can_land": a.can_land, "can_sea": a.can_sea} for a in v] for k, v in all_time_best.items()}}
+        global _session_id
+        if _session_id is None:
+            _session_id = _generate_session_id()
+        
+        # Include session ID in filename
+        name = name or f"{_session_id}_nx_world_save_{_now_str()}.json"
+        
+        data = {
+            "meta": {
+                "created": _now_str(), 
+                "step_tick": step_tick, 
+                "GlobalTimeSteps": GlobalTimeSteps, 
+                "births_count": births_count, 
+                "deaths_count": deaths_count, 
+                "game_index": game_index,
+                "session_id": _session_id,
+                "game_id": _game_id,
+                "global_name_counter": _global_name_counter,
+                "used_names": list(_used_names),
+                "next_clan_id": _next_clan_id,
+                "current_round": _current_round,
+                "next_nxer_id": _next_nxer_id
+            },
+            "clan_history": {str(k): {
+                'members': list(v['members']),
+                'merged_from': v['merged_from'],
+                'created_at_round': v['created_at_round'],
+                'active': v['active']
+            } for k, v in _clan_history.items()},
+            "world": {"N": world.N, "grid": world.grid},
+            "nxers": [{
+                "id": a.id, 
+                "name": a.name, 
+                "color": a.color, 
+                "pos": a.pos, 
+                "can_land": a.can_land, 
+                "can_sea": a.can_sea, 
+                "food": a.food, 
+                "is_male": a.is_male, 
+                "alive": a.alive, 
+                "born_ts": a.born_ts, 
+                "died_ts": a.died_ts,
+                "last_inputs": a.last_inputs, 
+                "last_outputs": a.last_outputs, 
+                "ticks_per_action": a.ticks_per_action, 
+                "tick_accum": a.tick_accum, 
+                "harvesting": a.harvesting, 
+                "mating_with": a.mating_with, 
+                "mating_end_tick": a.mating_end_tick, 
+                "visited": list(a.visited), 
+                "dopamine_boost_ticks": a.dopamine_boost_ticks, 
+                "_last_O4": a._last_O4, 
+                "mating_intent_until_tick": a.mating_intent_until_tick, 
+                "parents": list(a.parents) if a.parents else [None, None],
+                "ancestors": a.ancestors,
+                "rounds_survived": a.rounds_survived,
+                "mate_cooldown_until_tick": a.mate_cooldown_until_tick, 
+                "last_move_tick": a.last_move_tick, 
+                "last_pos": a.last_pos, 
+                "stats": asdict(a.stats), 
+                "net": a.net.to_dict(),
+                "vision_range": a.vision_range, 
+                "smell_radius": a.smell_radius, 
+                "heading": a.heading, 
+                "clan_id": a.clan_id
+            } for a in nxers.values()],
+            "foods": [{"id": f.id, "anchor": f.anchor, "pos": f.pos, "alive": f.alive, "respawn_at_tick": f.respawn_at_tick, "remaining": f.remaining, "progress": f.progress} for f in foods.values()],
+            "all_time_best": {k: [{"name": a.name, "is_male": a.is_male, "stats": asdict(a.stats), "net": a.net.to_dict(), "can_land": a.can_land, "can_sea": a.can_sea, "ancestors": getattr(a, 'ancestors', []), "rounds_survived": getattr(a, 'rounds_survived', 0)} for a in v] for k, v in all_time_best.items()}
+        }
         logger = get_data_logger()
         data["data_logger"] = logger.to_dict()
         path = _safe_path(name)
@@ -4006,28 +4212,106 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
     
     def load_state(path):
         nonlocal step_tick, nxers, foods, occupied, births_count, deaths_count, world, game_index, all_time_best
+        global _session_id, _global_name_counter, _used_names, _clan_history, _next_clan_id, _current_round, _game_id, _next_nxer_id
+        
         with open(path, "r") as f: data = json.load(f)
+        
         step_tick = data["meta"]["step_tick"]
-        births_count = int(data["meta"].get("births_count", 0)); deaths_count = int(data["meta"].get("deaths_count", 0)); game_index = int(data["meta"].get("game_index", 1))
-        world.grid = data["world"]["grid"]; world.N = len(world.grid)
-        renderer.pan = [world.N * 0.5, world.N * 0.5]; renderer.zoom = max(2.0, 800.0 / world.N)
+        births_count = int(data["meta"].get("births_count", 0))
+        deaths_count = int(data["meta"].get("deaths_count", 0))
+        game_index = int(data["meta"].get("game_index", 1))
+        
+        # Restore global tracking variables
+        _session_id = data["meta"].get("session_id", _generate_session_id())
+        _game_id = data["meta"].get("game_id", "".join([str(random.randint(0, 9)) for _ in range(9)]))
+        _global_name_counter = data["meta"].get("global_name_counter", 0)
+        _used_names = set(data["meta"].get("used_names", []))
+        _next_clan_id = data["meta"].get("next_clan_id", 1)
+        _current_round = data["meta"].get("current_round", 1)
+        _next_nxer_id = data["meta"].get("next_nxer_id", max((n["id"] for n in data["nxers"]), default=0) + 1)
+        
+        # Restore clan history
+        if "clan_history" in data:
+            _clan_history = {}
+            for k, v in data["clan_history"].items():
+                _clan_history[int(k)] = {
+                    'members': set(v['members']),
+                    'merged_from': v['merged_from'],
+                    'created_at_round': v['created_at_round'],
+                    'active': v['active']
+                }
+        
+        world.grid = data["world"]["grid"]
+        world.N = len(world.grid)
+        renderer.pan = [world.N * 0.5, world.N * 0.5]
+        renderer.zoom = max(2.0, 800.0 / world.N)
+        
+        # Restore all_time_best with new fields
         if "all_time_best" in data:
             all_time_best = {k: [] for k in data["all_time_best"]}
             for category, champs in data["all_time_best"].items():
                 for champ_data in champs:
                     net = _rebuild_net_from_dict(champ_data["net"])
-                    champ_nxer = NxEr(id=-1, name=champ_data["name"], color=(200, 200, 200), pos=(0, 0), can_land=champ_data.get("can_land", True), can_sea=champ_data.get("can_sea", False), net=net, food=0, is_male=champ_data.get("is_male", random.random() < 0.5), stats=NxErStats(**champ_data["stats"]))
+                    champ_nxer = NxEr(
+                        id=-1, 
+                        name=champ_data["name"], 
+                        color=(200, 200, 200), 
+                        pos=(0, 0), 
+                        can_land=champ_data.get("can_land", True), 
+                        can_sea=champ_data.get("can_sea", False), 
+                        net=net, 
+                        food=0, 
+                        is_male=champ_data.get("is_male", random.random() < 0.5), 
+                        stats=NxErStats(**champ_data["stats"]),
+                        ancestors=champ_data.get("ancestors", []),
+                        rounds_survived=champ_data.get("rounds_survived", 0)
+                    )
                     all_time_best[category].append(champ_nxer)
-        nxers = {}; occupied = set()
+        
+        nxers = {}
+        occupied = set()
         for nd in data["nxers"]:
             net = _rebuild_net_from_dict(nd["net"])
             pos_wrapped = wrap_pos(tuple(nd["pos"]))
-            a = NxEr(id=nd["id"], name=nd["name"], color=tuple(nd["color"]), pos=pos_wrapped, can_land=nd["can_land"], can_sea=nd["can_sea"], net=net, food=float(nd["food"]), 
-            is_male=nd.get("is_male", random.random() < 0.5), alive=nd["alive"], born_ts=nd["born_ts"], died_ts=nd["died_ts"], 
-            last_inputs=tuple(nd["last_inputs"]), last_outputs=tuple(nd["last_outputs"]), ticks_per_action=int(nd["ticks_per_action"]), tick_accum=int(nd["tick_accum"]), harvesting=nd["harvesting"], mating_with=nd["mating_with"], mating_end_tick=nd["mating_end_tick"], stats=NxErStats(**nd["stats"]), visited=set(map(tuple, nd.get("visited", []))), dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), _last_O4=int(nd.get("_last_O4", 0)), mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), parents=tuple(nd.get("parents", [None, None])), mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), last_move_tick=int(nd.get("last_move_tick", step_tick)), last_pos=tuple(nd.get("last_pos", pos_wrapped)),
-                     vision_range=nd.get("vision_range", 5), smell_radius=nd.get("smell_radius", 3), heading=nd.get("heading", 0), clan_id=nd.get("clan_id", None))
+            a = NxEr(
+                id=nd["id"], 
+                name=nd["name"], 
+                color=tuple(nd["color"]), 
+                pos=pos_wrapped, 
+                can_land=nd["can_land"], 
+                can_sea=nd["can_sea"], 
+                net=net, 
+                food=float(nd["food"]),
+                is_male=nd.get("is_male", random.random() < 0.5), 
+                alive=nd["alive"], 
+                born_ts=nd["born_ts"], 
+                died_ts=nd["died_ts"],
+                last_inputs=tuple(nd["last_inputs"]), 
+                last_outputs=tuple(nd["last_outputs"]), 
+                ticks_per_action=int(nd["ticks_per_action"]), 
+                tick_accum=int(nd["tick_accum"]), 
+                harvesting=nd["harvesting"], 
+                mating_with=nd["mating_with"], 
+                mating_end_tick=nd["mating_end_tick"], 
+                stats=NxErStats(**nd["stats"]), 
+                visited=set(map(tuple, nd.get("visited", []))), 
+                dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), 
+                _last_O4=int(nd.get("_last_O4", 0)), 
+                mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), 
+                parents=tuple(nd.get("parents", [None, None])),
+                ancestors=nd.get("ancestors", []),
+                rounds_survived=nd.get("rounds_survived", 0),
+                mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), 
+                last_move_tick=int(nd.get("last_move_tick", step_tick)), 
+                last_pos=tuple(nd.get("last_pos", pos_wrapped)),
+                vision_range=nd.get("vision_range", 5), 
+                smell_radius=nd.get("smell_radius", 3), 
+                heading=nd.get("heading", 0), 
+                clan_id=nd.get("clan_id", None)
+            )
             nxers[a.id] = a
             if a.alive: occupied.add(a.pos)
+        
         foods = {}
         for fd in data["foods"]:
             f = Food(id=fd["id"], anchor=wrap_pos(tuple(fd["anchor"])), pos=wrap_pos(tuple(fd["pos"])), alive=fd["alive"], respawn_at_tick=fd["respawn_at_tick"], remaining=int(fd.get("remaining", 25)), progress={int(k): int(v) for k, v in fd.get("progress", {}).items()})
@@ -4110,11 +4394,38 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         food_taken = sorted(all_nxers, key=lambda a: a.stats.food_taken, reverse=True)
         fitness = sorted(all_nxers, key=lambda a: a.stats.fitness_score, reverse=True)
         fmt = lambda v: f"{v:.1f}" if isinstance(v, float) else str(v)
-        def format_entry(agent, value): return (f"{agent.name} [Die]" if not agent.alive else agent.name, fmt(value))
+        #def format_entry(agent, value): return (f"{agent.name} [Die]" if not agent.alive else agent.name, fmt(value))
+        def format_entry(agent, value):
+            has_parents = (
+                hasattr(agent, "parents")
+                and agent.parents is not None
+                and any(p is not None for p in agent.parents)
+            )
+
+            star = "*" if has_parents else ""
+            name = f"{agent.name} [{agent.rounds_survived}{star}]"
+
+            return (
+                f"{name} [Die]" if not agent.alive else name,
+                fmt(value)
+            )
+
         return {"Food found": [format_entry(a, a.stats.food_found) for a in food_found], "Food taken": [format_entry(a, a.stats.food_taken) for a in food_taken], "World explored": [format_entry(a, a.stats.explored) for a in explored], "Time lived (s)": [format_entry(a, a.stats.time_lived_s) for a in lived], "Mates": [format_entry(a, a.stats.mates_performed) for a in mated], "Fitness": [format_entry(a, a.stats.fitness_score) for a in fitness]}
     
-    def _is_parent_child(A: NxEr, B: NxEr) -> bool: return (A.id in (B.parents or (None, None))) or (B.id in (A.parents or (None, None)))
-    
+    def _is_parent_child(A: NxEr, B: NxEr) -> bool:
+        """Check if A and B share any ancestry (prevents inbreeding)."""
+        # Direct parent check (using names)
+        if A.name in (B.parents or (None, None)) or B.name in (A.parents or (None, None)):
+            return True
+        # Full ancestry check - no mating with ANY ancestor (using names)
+        if A.name in B.ancestors or B.name in A.ancestors:
+            return True
+        # Check if they share common ancestors (siblings/cousins)
+        if A.ancestors and B.ancestors:
+            if set(A.ancestors) & set(B.ancestors):
+                return True
+        return False
+
     def can_mate(A: NxEr, B: NxEr, now_tick: int) -> bool:
         if A.id == B.id or not A.alive or not B.alive or A.is_male == B.is_male or A.mating_with is not None or B.mating_with is not None or A.food < 5 or B.food < 5 or _is_parent_child(A, B) or now_tick < A.mate_cooldown_until_tick or now_tick < B.mate_cooldown_until_tick: return False
         return True
@@ -4140,41 +4451,88 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         return unique_champs[:9]
     
     def restart_game_with_champions():
-        nonlocal world, nxers, foods, occupied, births_count, deaths_count, effects, game_index, used_colors, champion_counts
+        nonlocal world, nxers, foods, occupied, births_count, deaths_count, effects, game_index, used_colors
+        global _current_round, _next_clan_id, _clan_history, _game_id, _next_nxer_id
+        
         update_all_time_best()
         champs = champions_from_last_game()
         
-        # Reset data logger for new game round
         get_data_logger().reset()
         
         game_index += 1
-        effects.clear(); births_count = 0; deaths_count = 0; used_colors = set(RESERVED_COLORS)
+        _current_round = game_index
+        _game_id = "".join([str(random.randint(0, 9)) for _ in range(9)])
+        effects.clear()
+        births_count = 0
+        deaths_count = 0
+        used_colors = set(RESERVED_COLORS)
+        
         world = World(NxWorldSize, NxWorldSea, NxWorldRocks, rnd_seed=None)
-        renderer.world = world; renderer.pan = [world.N * 0.5, world.N * 0.5]; renderer.zoom = max(2.0, 800.0 / world.N)
-        nxers = {}; occupied = set()
+        renderer.world = world
+        renderer.pan = [world.N * 0.5, world.N * 0.5]
+        renderer.zoom = max(2.0, 800.0 / world.N)
+        nxers = {}
+        occupied = set()
         place_initial_food(min(MaxFood, max(30, MaxFood // 2)))
         next_id = 0
-                
+        
         for a in champs:
-            base_name_with_hyphen = _strip_leading_digits(a.name)
-            base_name = base_name_with_hyphen.lstrip('-') or a.name
-            champion_counts[base_name] = champion_counts.get(base_name, 0) + 1
-            new_name = f"{champion_counts[base_name]}{base_name}"
+            # Keep the same name - NO round prefix
+            new_name = a.name  # Name stays the same across rounds
+            
             net_copy = _rebuild_net_from_dict(a.net.to_dict())
             allow_land, allow_sea = a.can_land, a.can_sea
             pos = find_free(allow_sea=allow_sea, allow_land=allow_land) or (random.randrange(world.N), random.randrange(world.N))
             
-            # Inherit vision/smell/heading but reset clan
             vision = a.vision_range
             smell = a.smell_radius
             heading = random.randint(0, 7)
             
-            nx = NxEr(id=next_id, name=new_name, color=_rand_color(list(used_colors)), pos=pos, can_land=allow_land, can_sea=allow_sea, net=net_copy, food=float(StartFood * 1.1), is_male=a.is_male, ticks_per_action=max(1, int(GlobalTimeSteps / max(1, net_copy.params.simulation_steps))), stats=NxErStats(), visited=set([pos]), parents=(None, None), mate_cooldown_until_tick=0, last_move_tick=0, last_pos=pos,
-                      vision_range=vision, smell_radius=smell, heading=heading, clan_id=None)
-            used_colors.add(nx.color); nxers[nx.id] = nx; occupied.add(nx.pos); next_id += 1
+            # Create new clan for champion
+            clan_id = _next_clan_id
+            _next_clan_id += 1
+            _clan_history[clan_id] = {
+                'members': {new_name},
+                'merged_from': [],
+                'created_at_round': _current_round,
+                'active': True
+            }
+            
+            nx = NxEr(
+                id=_next_nxer_id, 
+                name=new_name, 
+                color=_rand_color(list(used_colors)), 
+                pos=pos, 
+                can_land=allow_land, 
+                can_sea=allow_sea, 
+                net=net_copy, 
+                food=float(StartFood * 1.1), 
+                is_male=a.is_male, 
+                ticks_per_action=max(1, int(GlobalTimeSteps / max(1, net_copy.params.simulation_steps))), 
+                stats=NxErStats(), 
+                visited=set([pos]), 
+                parents=a.parents if hasattr(a, 'parents') else (None, None),
+                ancestors=a.ancestors.copy() if hasattr(a, 'ancestors') else [],
+                rounds_survived=a.rounds_survived + 1 if hasattr(a, 'rounds_survived') else 1,
+                mate_cooldown_until_tick=0, 
+                last_move_tick=0, 
+                last_pos=pos,
+                vision_range=vision, 
+                smell_radius=smell, 
+                heading=heading, 
+                clan_id=clan_id
+            )
+            used_colors.add(nx.color)
+            _next_nxer_id += 1
+            nxers[nx.id] = nx
+            occupied.add(nx.pos)
+        
+        # Fill remaining slots with new NxErs
         while len(nxers) < StartingNxErs:
-            a = make_nxer(next_id)
-            nxers[a.id] = a; occupied.add(a.pos); next_id += 1
+            a = make_nxer()
+            nxers[a.id] = a
+            occupied.add(a.pos)
+        
         print(f"[RESTART] Game #{game_index} started with {len(champs)} champions and {len(nxers) - len(champs)} new NxErs.")
 
     def get_heading_from_move(dx: int, dy: int, current: int) -> int:
@@ -4283,8 +4641,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     if save_on_round_end:
                     # 1. Autosave the round
                         timestamp = _now_str().replace(":", "-")
-                        game_id = "".join([str(random.randint(0, 9)) for _ in range(10)])
-                        filename = f"{game_id}_{game_index}_Completed_{timestamp}.json"
+                        #game_id = "".join([str(random.randint(0, 9)) for _ in range(10)])
+                        filename = f"{_session_id}_{_game_id}_{game_index}_Completed_{timestamp}.json"
                         save_state(filename)
                         print(f"[SAVING ROUND] {game_index} saved as {filename}")
                                         
