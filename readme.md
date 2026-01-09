@@ -18,9 +18,9 @@ Jan 4th 2026 v 2.1 Research update. and new HF Dataset https://huggingface.co/da
 Jan 7th 2026 v 2.2 Research update. Enhanced Full Fledged Inheritance <br>
 Jan 8th 2026:<br>
 -> v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions no more duplicate names in next rounds<br>
--> v2.22: Extra Logging enabled up to 1000s timesteps configurable
+-> v2.22: Extra Logging enabled up to 1000s timesteps configurable<br>
 Jan 9th 2026:<br>
--> v2.23: God mode disabled and improved biological parameters  
+-> v2.23: God mode disabled and improved biological parameters  <br>
 
 ### Lite Version Features, (Research edition bellow):
 - 🌍 **Procedurally Generated Worlds**: Island-like terrains with land, sea, and obstacles and new Earth mode in V 2.0
@@ -529,6 +529,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
