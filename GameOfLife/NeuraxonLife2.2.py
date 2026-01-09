@@ -1,10 +1,11 @@
-# Neuraxon Game of Life v.2.22 (Research Version): Extra Loging enabled up to 10000 timesteps configurable
+# Neuraxon Game of Life v.2.23 (Research Version): God mode disabled and improved biological parameters
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.2:  Enhance Full Feldged Inheritance
 # New features in v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions
-# New features in v2.22: Extra Loging enabled up to 10000 timesteps configurable
+# New features in v2.22: Extra Logging enabled up to 10000 timesteps configurable
+# New features in v2.23: God mode disabled and improved biological parameters   
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -2424,7 +2425,12 @@ class Neuraxon:
         self.recovery_rate = _variate(params.recovery_rate)
 
         # Core state variables
-        self.membrane_potential = 0.0
+        #self.membrane_potential = 0.0
+        self.membrane_potential = random.uniform(
+            self.firing_threshold_inhibitory * 0.8, #FIX v2.23 to improve biological parameters previously set to 0.0
+            self.firing_threshold_excitatory * 0.8 #FIX v2.23 to improve biological parameters previously set to 0.0
+        )
+
         self.trinary_state = TrinaryState.NEUTRAL.value
         self.adaptation = 0.0
         self.autoreceptor = 0.0
@@ -2499,12 +2505,18 @@ class Neuraxon:
         
         # Use individualized spontaneous_rate
         # Track if firing is spontaneous
-        spont_prob = self.spontaneous_firing_rate * dt * (1.0 + math.cos(self.phase) * 0.3)
-        spontaneous = 0.0
+        spont_prob = self.spontaneous_firing_rate * dt * (1.0 + math.cos(self.phase) * 0.3) 
         is_spontaneous_firing = False
+        spontaneous = 0.0
+
         if random.random() < spont_prob:
-            spontaneous = random.uniform(-0.5, 0.5)
             is_spontaneous_firing = True
+            # FORCE A SPIKE: Set potential directly to threshold new v2.23
+            if random.random() < 0.5:
+                self.membrane_potential = self.firing_threshold_excitatory + 0.01
+            else:
+                # Or force a random strong current (Old method, kept for variety)
+                spontaneous = random.choice([-1.0, 1.0]) * 2.0
         
         acetylcholine = neuromodulators.get('acetylcholine', 0.5)
         norepi = neuromodulators.get('norepinephrine', 0.5)
@@ -3910,10 +3922,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         
         # --- Core Neuron Properties ---
         p.membrane_time_constant = random.uniform(9.0, 48.0) 
-        p.firing_threshold_excitatory = random.uniform(0.35, 1.7) 
+        #p.firing_threshold_excitatory = random.uniform(0.35, 1.7) 
+        p.firing_threshold_excitatory =random.uniform(0.1, 0.25) #FIX v2.23 to improve biological parameters previously set to 0.35, 1.7
         p.firing_threshold_inhibitory = random.uniform(-2.0, -0.5)
-        p.adaptation_rate = random.uniform(0.0, 0.2)
-        p.spontaneous_firing_rate = random.uniform(0.0, 0.1)
+        p.adaptation_rate = random.uniform(0.0, 0.2)        
+        p.spontaneous_firing_rate = random.uniform(0.02, 0.08) #FIX v2.23 to improve biological parameters previously set to 0.0, 0.1
         p.neuron_health_decay = random.uniform(0.0001, 0.005)  
         
         # --- Dendritic Branch Properties ---
@@ -3929,8 +3942,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         p.tau_ltd = p.tau_ltp * random.uniform(1.5, 3.0)  
         
         # --- Synaptic Weight Initialization ---
-        p.w_fast_init_min = random.uniform(-1.5, -0.5)
-        p.w_fast_init_max = random.uniform(0.5, 1.5)
+        #p.w_fast_init_min = random.uniform(-1.5, -0.5)
+        #p.w_fast_init_max = random.uniform(0.5, 1.5)
+        p.w_fast_init_min = random.uniform(0.1, 0.3)   #FIX v2.23 to improve biological parameters previously set to -1.5, -0.5 Weak connections
+        p.w_fast_init_max = random.uniform(0.8, 1.2)   #FIX v2.23 to improve biological parameters previously set to 0.5, 1.5 Strong "Driver" connections
+
         p.w_slow_init_min = random.uniform(-0.8, -0.3)
         p.w_slow_init_max = random.uniform(0.3, 0.8)
         p.w_meta_init_min = random.uniform(-0.5, -0.1)
@@ -3945,7 +3961,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         # --- Structural Plasticity ---
         p.synapse_integrity_threshold = random.uniform(0.05, 0.2)
         p.synapse_formation_prob = random.uniform(0.02, 0.06)
-        p.synapse_death_prob = random.uniform(0.01, 0.03)  
+        #p.synapse_death_prob = random.uniform(0.01, 0.03)  
+        p.synapse_death_prob = random.uniform(0.0001, 0.0005) #FIX v2.23 to improve biological parameters previously set to 0.01, 0.03 
         p.neuron_death_threshold = random.uniform(0.05, 0.2)
         
         # neuromodulators baseline levels
@@ -5008,11 +5025,12 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     a.last_outputs = tuple(o)
                     data_logger.log_io_pattern(step_tick, a.id, a.last_inputs, tuple(a.last_outputs))
                     O1, O2, O3, O4, O5 = o
-                    
-                    if O1 == 0 and O2 == 0 and random.random() < 0.4:
-                        if random.random() < 0.5: O1 = random.choice([-1, 1])
-                        else: O2 = random.choice([-1, 1])
-                    if O4 == 0 and random.random() < 0.08: O4 = random.choice([-1, 1])
+                    #GOD MODE DISABLED for moving to avoid zombies v2.23
+                    #if O1 == 0 and O2 == 0 and random.random() < 0.4:
+                     #   if random.random() < 0.5: O1 = random.choice([-1, 1])
+                        #else: O2 = random.choice([-1, 1])
+                    #GOD MODE DISABLED for mating v2.23
+                    #if O4 == 0 and random.random() < 0.08: O4 = random.choice([-1, 1])
                     
                     dx = -O1; dy = -O2
                     a.heading = get_heading_from_move(dx, dy, a.heading)
