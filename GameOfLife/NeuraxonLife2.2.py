@@ -1,11 +1,12 @@
-# Neuraxon Game of Life v.2.23 (Research Version): God mode disabled and improved biological parameters
+# Neuraxon Game of Life v.2.24 (Research Version): Sparse comrpesing some Timeseries data to reduce memory usage and improve performance
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.2:  Enhance Full Feldged Inheritance
 # New features in v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions
-# New features in v2.22: Extra Logging enabled up to 10000 timesteps configurable
+# New features in v2.22: Extra Loging enabled up to 10000 timesteps configurable
 # New features in v2.23: God mode disabled and improved biological parameters   
+# New features in v2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance 
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -85,6 +86,24 @@ class DataLogger:
         self.max_history_length = max_history_length
         self.reset()
     
+    def _compress_series(self, data_list: list) -> list:
+        """
+        Compresses a list into [index, value] pairs. 
+        Only stores the entry when the value changes.
+        Example: [0, 0, 0, 5, 5] -> [[0, 0], [3, 5]]
+        """
+        if not data_list:
+            return []
+        
+        compressed = [[0, data_list[0]]]
+        last_val = data_list[0]
+        
+        for idx, val in enumerate(data_list[1:], 1):
+            if val != last_val:
+                compressed.append([idx, val])
+                last_val = val
+        return compressed
+
     def reset(self):
         """Reset all logged data."""
         self.start_time = time.time()
@@ -1300,9 +1319,10 @@ class DataLogger:
         self.nxer_summary['max_explored'] = max(self.nxer_summary['max_explored'], nxer.stats.explored)
     
     def to_dict(self) -> dict:
-        """Serialize all logged data to a dictionary."""
+        """Serialize all logged data to a dictionary with compression."""
         self.game_metadata['end_timestamp'] = datetime.now().isoformat()
         self.game_metadata['duration_seconds'] = time.time() - self.start_time
+        self.game_metadata['log_level'] = self.log_level # Ensure metadata matches actual level
         
         data = {
             'metadata': self.game_metadata,
@@ -1311,28 +1331,44 @@ class DataLogger:
         }
         
         if self.log_level >= 2:
-            # Serialize synapse snapshots with string keys
+            # Prepare Level 2 Data
+            limit_logs = 10000 
+            
+            # Serialize Synapses (Handling tuple keys)
             serializable_synapse_snapshots = []
             for snapshot in self.synapse_snapshots:
                 serializable_weights = {}
-                # FIX: Check if key is tuple or string before unpacking
                 for key, weights in snapshot.get('synapse_weights', {}).items():
-                    if isinstance(key, tuple):
-                        # Handle old format or single-network format (pre, post)
-                        pre, post = key
-                        serializable_weights[f"{pre}_{post}"] = weights
-                    else:
-                        # Handle new format where key is already a string "nxerId_pre_post"
-                        serializable_weights[str(key)] = weights
-                        
+                    # Check if key is tuple (pre, post) or string
+                    k_str = f"{key[0]}_{key[1]}" if isinstance(key, tuple) else str(key)
+                    serializable_weights[k_str] = weights
                 serializable_synapse_snapshots.append({
                     'tick': snapshot['tick'],
                     'synapse_weights': serializable_weights
                 })
-            limit_logs = 10000 # Fix v2.22 to expand log limits 
+
+            # --- OPTIMIZATION START: Compress Specific NxEr Time Series ---
+            # These metrics rarely change, so we compress them.
+            SPARSE_KEYS = {'alive', 'food_found', 'explored', 'mates_performed' }
+            
+            optimized_nxer_series = {}
+            for nxer_id, series in self.per_nxer_time_series.items():
+                optimized_series = {}
+                for metric, values in series.items():
+                    if metric in SPARSE_KEYS:
+                        # Apply Delta Compression
+                        optimized_series[metric] = self._compress_series(values)
+                    else:
+                        # Keep dense (Network activity, Dopamine, Position, etc.)
+                        optimized_series[metric] = values
+                optimized_nxer_series[nxer_id] = optimized_series
+            # --- OPTIMIZATION END ---
+
             data['level2'] = {                
-                # Existing
                 'time_series': self.time_series,
+                'per_nxer_time_series': optimized_nxer_series, # Use the optimized version
+                
+                # Event Lists (Unchanged)
                 'plasticity_events': self.plasticity_events[-limit_logs:],
                 'structural_events': self.structural_events[-limit_logs:],
                 'neuron_snapshots': self.neuron_snapshots[-limit_logs:],
@@ -1340,8 +1376,6 @@ class DataLogger:
                 'nxer_events': self.nxer_events[-limit_logs:],
                 'itu_fitness_history': self.itu_fitness_history[-limit_logs:],
                 'io_patterns': self.io_patterns[-limit_logs:],
-                
-                # NEW event logs
                 'silent_synapse_events': self.silent_synapse_events[-limit_logs:],
                 'spontaneous_events': self.spontaneous_events[-limit_logs:],
                 'homeostatic_events': self.homeostatic_events[-limit_logs:],
@@ -1349,13 +1383,10 @@ class DataLogger:
                 'autoreceptor_events': self.autoreceptor_events[-limit_logs:],
                 'neuromodulator_events': self.neuromodulator_events[-limit_logs:],
                 'phase_reset_events': self.phase_reset_events[-limit_logs:],
-                
-                # NEW event logs
                 'weight_evolution_events': self.weight_evolution_events[-limit_logs:],
                 'threshold_modulation_events': self.threshold_modulation_events[-limit_logs:],
                 'associativity_events': self.associativity_events[-limit_logs:],
                 'subthreshold_events': self.subthreshold_events[-limit_logs:],
-                'per_nxer_time_series': self.per_nxer_time_series,
             }
         return data
     
@@ -4196,7 +4227,9 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         transfer = min(5.0, min(A.food / 2, B.food / 2))
         A.food -= transfer
         B.food -= transfer
-        child.food += transfer * 15
+        child.food += transfer * 8
+        max_limit = float(StartFood) * 1.5 
+        child.food = min(transfer * 8, max_limit)#FIX v2.24 to improve biological parameters previously set to 15        
         child.pos = find_free(allow_sea=can_sea, allow_land=can_land, near=near_pos, search_radius=3) or near_pos
         nxers[child.id] = child
         occupied.add(child.pos)
@@ -4779,7 +4812,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         return current
 
     FIXED_DT = 1.0 / GlobalTimeSteps
-    METABOLIC_RAMP_PER_SEC = 1.2  # Metabolic Ramp: +120%/sec idle (atrophy)
+    METABOLIC_RAMP_PER_SEC = 10  # Metabolic Ramp: +1000%/sec idle (atrophy) for the new v2.23 metrics
     accumulator = 0.0
     data_logger = get_data_logger()
     
@@ -5102,7 +5135,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     prevA = list(A.last_inputs); prevA[0:3] = [-1, 1, (1 if world.terrain(tgt)==T_LAND else 0)]; A.last_inputs = tuple(prevA)
                     prevB = list(B.last_inputs); prevB[0:3] = [-1, 1, (1 if world.terrain(A.pos)==T_LAND else 0)]; B.last_inputs = tuple(prevB)
                     
-                    if O4 == 1 or random.random() < 0.03: A.mating_intent_until_tick = step_tick + 3 * GlobalTimeSteps
+                    if O4 == 1 or random.random() < 0.03: 
+                        A.mating_intent_until_tick = step_tick + 6 * GlobalTimeSteps
                     if getattr(B, "_last_O4", 0) == 1 or random.random() < 0.03: B.mating_intent_until_tick = step_tick + 3 * GlobalTimeSteps
                     if (A.mating_intent_until_tick > step_tick and B.mating_intent_until_tick > step_tick and can_mate(A, B, step_tick)):
                         A.mating_with = B.id; B.mating_with = A.id; dur = max(A.net.params.simulation_steps, B.net.params.simulation_steps)
