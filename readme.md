@@ -12,9 +12,11 @@
 </div>
 
 <br>
-New Research  2.24 and Lite version 2.0<br>
+New Research  2.25 and Lite version 2.0<br>
 Experience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).<br>
 CHANGE LOG:
+Jan 12th 2026:<br>
+-> v2.25: Log Mode 3 enabled for deep detailed timeseries at non agragated Nxer level<br>
 Jan 10th 2026:<br>
 -> v2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance<br>
 Jan 9th 2026:<br>
@@ -330,7 +332,7 @@ The hybrid creates "living neural tissue" that:
 - Exhibits emergent complexity and self-organization
 
 
-## 🎮 Neuraxon Game of Life 2.24  
+## 🎮 Neuraxon Game of Life 2.25  
 
 **A complete artificial life simulation powered by Neuraxon networks!**
 
@@ -343,8 +345,9 @@ The hybrid creates "living neural tissue" that:
 * 2.22: Extra Logging enabled up to 1000s of timesteps configurable
 * 2.23: God mode disabled and improved biological parameters
 * 2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance
+* 2.25: Log Mode 3 enabled for deep detailed timeseries at non agragated Nxer level
 
-The **Neuraxon Game of Life 2.23 ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
+The **Neuraxon Game of Life 2.25 ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
 
 ### Features
 
@@ -534,6 +537,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
