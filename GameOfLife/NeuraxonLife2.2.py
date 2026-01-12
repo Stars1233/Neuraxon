@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.24 (Research Version): Sparse comrpesing some Timeseries data to reduce memory usage and improve performance
+# Neuraxon Game of Life v.2.25 (Research Version): Log Mode 3
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -6,7 +6,8 @@
 # New features in v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions
 # New features in v2.22: Extra Loging enabled up to 10000 timesteps configurable
 # New features in v2.23: God mode disabled and improved biological parameters   
-# New features in v2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance 
+# New features in v2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance
+# New features in v2.25: Log Mode 3 enabled for deep detailed timeseries at non agragated Nxer level
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -74,15 +75,17 @@ class DataLogger:
     
     Level 1: Basic logging (summary statistics, final states)
     Level 2: Detailed logging (time-series of all variables, plasticity events, etc.) Default
-    
+    Level 3: Deep detailed logging
+
     Data is kept in memory during gameplay and only saved:
     - At the end of the game (game over / all NxErs died)
     - When user explicitly saves the game
     - When user loads a game (saves current state first)
     """
     
+    
     def __init__(self, log_level: int = 2, max_history_length: int = 10000):
-        self.log_level = max(1, min(2, log_level))
+        self.log_level = max(1, min(3, log_level))
         self.max_history_length = max_history_length
         self.reset()
     
@@ -466,7 +469,7 @@ class DataLogger:
         series['phase_coherence'].append(phase_coherence)
     
     def set_level(self, level: int):
-        new_level = max(1, min(2, level))
+        new_level = max(1, min(3, level))
         if new_level != self.log_level:
             self.log_level = new_level
             self.game_metadata['log_level'] = self.log_level
@@ -480,7 +483,6 @@ class DataLogger:
         alive_nxers = [a for a in all_nxers if a.alive]
         
         if alive_nxers:
-            # Aggregate across all alive NxErs
             all_active_neurons = []
             for a in alive_nxers:
                 all_active_neurons.extend([n for n in a.net.all_neurons if n.is_active])
@@ -489,7 +491,6 @@ class DataLogger:
                 activity = sum(abs(n.trinary_state) for n in all_active_neurons) / len(all_active_neurons)
                 self.summary['peak_network_activity'] = max(self.summary['peak_network_activity'], activity)
             
-            # Aggregate branching ratio
             branching_ratios = [a.net.branching_ratio for a in alive_nxers if a.net.branching_ratio > 0]
             if branching_ratios:
                 avg_br = sum(branching_ratios) / len(branching_ratios)
@@ -499,7 +500,6 @@ class DataLogger:
                 )
                 self.summary['branching_ratio_samples'] += 1
             
-            # Aggregate neuromodulators (average across all NxErs)
             for mod in ['dopamine', 'serotonin', 'acetylcholine', 'norepinephrine']:
                 levels = [a.net.neuromodulators.get(mod, 0.0) for a in alive_nxers]
                 avg_level = sum(levels) / len(levels) if levels else 0.0
@@ -507,8 +507,10 @@ class DataLogger:
         
         if self.log_level >= 2:
             self._log_tick_level2(tick, alive_nxers)
-            for a in alive_nxers:
-                self._log_nxer_individual(tick, a)
+            # Only log individual NxEr time series at level 3
+            if self.log_level >= 3:
+                for a in alive_nxers:
+                    self._log_nxer_individual(tick, a)
     
     def _log_tick_level2(self, tick: int, alive_nxers: list):
         """Capture detailed time series data each tick from ALL alive NxErs."""
@@ -1322,7 +1324,7 @@ class DataLogger:
         """Serialize all logged data to a dictionary with compression."""
         self.game_metadata['end_timestamp'] = datetime.now().isoformat()
         self.game_metadata['duration_seconds'] = time.time() - self.start_time
-        self.game_metadata['log_level'] = self.log_level # Ensure metadata matches actual level
+        self.game_metadata['log_level'] = self.log_level
         
         data = {
             'metadata': self.game_metadata,
@@ -1331,15 +1333,16 @@ class DataLogger:
         }
         
         if self.log_level >= 2:
-            # Prepare Level 2 Data
-            limit_logs = 10000 
+            # Set limit_logs based on log level
+            if self.log_level >= 3:
+                limit_logs = 100000
+            else:
+                limit_logs = 5000
             
-            # Serialize Synapses (Handling tuple keys)
             serializable_synapse_snapshots = []
             for snapshot in self.synapse_snapshots:
                 serializable_weights = {}
                 for key, weights in snapshot.get('synapse_weights', {}).items():
-                    # Check if key is tuple (pre, post) or string
                     k_str = f"{key[0]}_{key[1]}" if isinstance(key, tuple) else str(key)
                     serializable_weights[k_str] = weights
                 serializable_synapse_snapshots.append({
@@ -1347,28 +1350,24 @@ class DataLogger:
                     'synapse_weights': serializable_weights
                 })
 
-            # --- OPTIMIZATION START: Compress Specific NxEr Time Series ---
-            # These metrics rarely change, so we compress them.
             SPARSE_KEYS = {'alive', 'food_found', 'explored', 'mates_performed' }
             
             optimized_nxer_series = {}
-            for nxer_id, series in self.per_nxer_time_series.items():
-                optimized_series = {}
-                for metric, values in series.items():
-                    if metric in SPARSE_KEYS:
-                        # Apply Delta Compression
-                        optimized_series[metric] = self._compress_series(values)
-                    else:
-                        # Keep dense (Network activity, Dopamine, Position, etc.)
-                        optimized_series[metric] = values
-                optimized_nxer_series[nxer_id] = optimized_series
-            # --- OPTIMIZATION END ---
+            # Only include per_nxer_time_series at level 3
+            if self.log_level >= 3:
+                for nxer_id, series in self.per_nxer_time_series.items():
+                    optimized_series = {}
+                    for metric, values in series.items():
+                        if metric in SPARSE_KEYS:
+                            optimized_series[metric] = self._compress_series(values)
+                        else:
+                            optimized_series[metric] = values
+                    optimized_nxer_series[nxer_id] = optimized_series
 
             data['level2'] = {                
                 'time_series': self.time_series,
-                'per_nxer_time_series': optimized_nxer_series, # Use the optimized version
+                'per_nxer_time_series': optimized_nxer_series,
                 
-                # Event Lists (Unchanged)
                 'plasticity_events': self.plasticity_events[-limit_logs:],
                 'structural_events': self.structural_events[-limit_logs:],
                 'neuron_snapshots': self.neuron_snapshots[-limit_logs:],
@@ -4849,6 +4848,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     if btn == "playpause":
                         if not game_over: paused = not paused; renderer.clear_detail() if not paused else None
                     elif btn == "save":
+                        update_all_time_best()
                         was_paused = paused; paused = True; save_state(); paused = was_paused
                     elif btn == "load":
                         candidates = sorted([p for p in os.listdir(os.getcwd()) if p.startswith("nx_world_save_") and p.endswith(".json") and not p.endswith("_log.json")])
@@ -5341,14 +5341,14 @@ def run_config_screen() -> Optional[Dict[str, any]]:
     """
     pygame.init()
     screen = pygame.display.set_mode((1920, 1080), pygame.RESIZABLE)
-    pygame.display.set_caption("Neuraxon Game Of Life v 2.0 (Research Version) By David Vivancos & Dr Jose Sanchez for Qubic Science - Configuration")
+    pygame.display.set_caption("Neuraxon Game Of Life v 2.2 (Research Version) By David Vivancos & Dr Jose Sanchez for Qubic Science - Configuration")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 16); title_font = pygame.font.SysFont("consolas", 32, bold=True)
     # Define the parameters that will be configurable via sliders.
     param_specs = [("World Size", 30, 150, 40, True, lambda x: x), ("Sea Percentage", 20, 80, 55, True, lambda x: x / 100.0), ("Rock Percentage", 1, 10, 2, True, lambda x: x / 100.0),
      ("Starting NxErs", 1, 100, 30, True, lambda x: x), ("Food Sources", 25, 300, 50, True, lambda x: x), ("Food Respawn", 200, 600, 400, True, lambda x: x),
      ("Start Food", 25, 200, 25, True, lambda x: float(x)), ("Max Neurons", 5, 50, 50, True, lambda x: x), ("Global Time Steps", 30, 90, 60, True, lambda x: x),
-      ("Mate Cooldown (sec)", 6, 20, 12, True, lambda x: x), ("Log Level (1-2)", 1, 2, 2, True, lambda x: x)]
+      ("Mate Cooldown (sec)", 6, 20, 12, True, lambda x: x), ("Log Level (1-3)", 1, 3, 3, True, lambda x: x)]
     screen_width, screen_height = screen.get_size()
     slider_container_width = 700; slider_width = 600
     slider_start_x = (screen_width - slider_container_width) // 2 + (slider_container_width - slider_width) // 2
