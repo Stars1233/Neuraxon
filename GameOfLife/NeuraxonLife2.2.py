@@ -1,13 +1,14 @@
-# Neuraxon Game of Life v.2.25 (Research Version): Log Mode 3
+# Neuraxon Game of Life v.2.26 (Research Version): Neuromodulators update
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
 # New features in V2.2:  Enhance Full Feldged Inheritance
 # New features in v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions
 # New features in v2.22: Extra Loging enabled up to 10000 timesteps configurable
-# New features in v2.23: God mode disabled and improved biological parameters   
+# New features in v2.23: God mode disabled and improved biological parameters
 # New features in v2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance
 # New features in v2.25: Log Mode 3 enabled for deep detailed timeseries at non agragated Nxer level
+# New features in v2.26: Neuromodulators update
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -21,6 +22,7 @@ import random
 from copy import deepcopy
 from collections import deque, defaultdict
 from os import environ
+import cmath
 environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 try:
     import pygame
@@ -1101,18 +1103,18 @@ class DataLogger:
         if self.log_level >= 2 and self.time_series['driven_firing_count']:
             self.time_series['driven_firing_count'][-1] += 1
 
-    def log_homeostatic_event(self, tick: int, neuron_id: int, old_threshold: float, 
-                              new_threshold: float, activity_level: float):
+    def log_homeostatic_event(self, tick: int, neuron_id: int, old_value: float, 
+                              new_value: float, activity: float):
         """Log homeostatic plasticity threshold adjustments."""
         if self.log_level >= 2:
             self.summary['total_homeostatic_adjustments'] += 1
             self.homeostatic_events.append({
                 'tick': tick,
                 'neuron_id': neuron_id,
-                'old_threshold': old_threshold,
-                'new_threshold': new_threshold,
-                'activity_level': activity_level,
-                'direction': 'increased' if new_threshold > old_threshold else 'decreased'
+                'old_threshold': old_value,
+                'new_threshold': new_value,
+                'activity_level': activity,
+                'direction': 'increased' if new_value > old_value else 'decreased'
             })
 
     def log_dendritic_spike_event(self, tick: int, neuron_id: int, branch_id: int,
@@ -1247,6 +1249,7 @@ class DataLogger:
     def get_event_lists(self) -> dict:
         """Helper to return references to all event lists."""
         return {
+            'plasticity_events': self.plasticity_events,  # Missing
             'silent_synapse_events': self.silent_synapse_events,
             'spontaneous_events': self.spontaneous_events,
             'homeostatic_events': self.homeostatic_events,
@@ -1272,6 +1275,17 @@ class DataLogger:
         for key, events in remote_events.items():
             if key in local_lists and events:
                 local_lists[key].extend(events)
+                # ADD: Count LTP/LTD from merged events
+                if key == 'plasticity_events':
+                    for evt in events:
+                        if evt.get('type') == 'LTP':
+                            self.summary['total_ltp_events'] += 1
+                            if self.time_series['ltp_rate']:
+                                self.time_series['ltp_rate'][-1] += 1
+                        elif evt.get('type') == 'LTD':
+                            self.summary['total_ltd_events'] += 1
+                            if self.time_series['ltd_rate']:
+                                self.time_series['ltd_rate'][-1] += 1
 
     def log_structural_event(self, tick: int, event_type: str, entity_id: int, details: dict = None):
         if event_type == 'synapse_created':
@@ -2080,10 +2094,10 @@ class NetworkParameters:
     
     # --- Core Neuron Properties (Neuraxon) ---
     membrane_time_constant: float = 20.0 
-    firing_threshold_excitatory: float = 0.9 
-    firing_threshold_inhibitory: float = -0.9 
-    adaptation_rate: float = 0.05 
-    spontaneous_firing_rate: float = 0.02 
+    firing_threshold_excitatory: float = 0.45  # CHANGED: Lowered from 0.9 (28% reduction) to increase excitatory fraction
+    firing_threshold_inhibitory: float = -0.45  # CHANGED: Lowered from -0.9 to maintain symmetry
+    adaptation_rate: float = 0.02  # Changed from 0.05 to 0.02 to reduce adaptation speed so inputs accumulate more before dampening
+    spontaneous_firing_rate: float = 0.035  # CHANGED: Increased from 0.02 to drive more baseline activity
     neuron_health_decay: float = 0.001 
     
     # --- Dendritic Branch Properties ---
@@ -2122,7 +2136,7 @@ class NetworkParameters:
     # --- Neuromodulation (Section 1 & 8) ---
     dopamine_baseline: float = 0.12
     dopamine_high_affinity_threshold: float = 0.01 
-    dopamine_low_affinity_threshold: float = 1.0  
+    dopamine_low_affinity_threshold: float = 0.5 # Updated from 1.0 for the LTP/LTD mechanism   
     serotonin_baseline: float = 0.12
     serotonin_high_affinity_threshold: float = 0.01
     serotonin_low_affinity_threshold: float = 1.0
@@ -2139,7 +2153,7 @@ class NetworkParameters:
     oscillator_low_freq: float = 0.05  
     oscillator_mid_freq: float = 0.5   
     oscillator_high_freq: float = 4.0  
-    oscillator_strength: float = 0.15 
+    oscillator_strength: float = 0.25  # CHANGED: Increased from 0.15 to provide stronger baseline drive 
     
     # --- Energy Metabolism ---
     energy_baseline: float = 100.0 
@@ -2151,6 +2165,14 @@ class NetworkParameters:
     # --- Homeostasis ---
     target_firing_rate: float = 0.1 
     homeostatic_plasticity_rate: float = 0.001 
+    
+    # --- Adaptive Network-Wide Threshold Homeostasis (NEW in v2.2503) ---
+    # Bioinspired: Mimics homeostatic scaling in biological neurons to maintain criticality
+    adaptive_threshold_enabled: bool = True  # Enable network-wide adaptive threshold adjustment
+    adaptive_threshold_check_interval: int = 20  # Check more frequently (was 50)
+    adaptive_threshold_adjustment: float = 0.025  # Stronger base adjustment (was 0.015)
+    min_excitatory_fraction: float = 0.12  # Slightly lower floor 
+    max_excitatory_fraction: float = 0.45  # Allow higher ceiling for criticality
     
     # --- Aigarth Hybridization (Section 8) ---
     itu_circle_radius: int = 8 
@@ -2288,12 +2310,17 @@ class Synapse:
         self.post_trace += (-self.post_trace / self.tau_ltp + (1 if post_state == 1 else 0)) * dt
         
         da = neuromodulators.get('dopamine', 0.5)
+        ach = neuromodulators.get('acetylcholine', 0.5)
+        
         # FIX v2.02: Swapped thresholds. LTP (da_high) requires High Concentration (Low Affinity Threshold > 1.0).
         # FIX v2.02: LTD (da_low) requires Low Concentration (High Affinity Threshold > 0.01).
         # FIX v2.02: Changed da_low 'else 1.0' to 'else 0.0' to prevent always-on depression.
         da_high = 1.0 if da > self.params.dopamine_low_affinity_threshold else 0.0
         da_low = 1.0 if da > self.params.dopamine_high_affinity_threshold else 0.0
-        self.learning_rate_mod = 1.0 + (da_high * 0.5) + (da_low * 0.2)
+        
+        # ACh gain: If high, consolidates learning faster (Paper Claim: Consolidate what has been learned)
+        ach_gain = 1.0 + (ach if ach > 0.5 else 0.0)
+        self.learning_rate_mod = (1.0 + (da_high * 0.5) + (da_low * 0.2)) * ach_gain
         
         # NEW: Log threshold crossings
         logger = get_data_logger()
@@ -2322,11 +2349,27 @@ class Synapse:
             # LTP now only occurs during Dopamine Surges (Reward)
             delta = self.learning_rate * self.learning_rate_mod * da_high * self.pre_trace
             self._pending_delta_w = delta
+            # FIX v2.2505: Log LTP event when delta is significant
+            if delta > 0.0001 and logger.log_level >= 2:
+                logger.log_plasticity_event(tick=0, event_type='LTP', 
+                                            pre_id=self.pre_id, post_id=self.post_id,
+                                            delta_w=delta)
             return delta
-        elif pre_state == 1 and post_state == -1:
-            # LTD now occurs at Baseline levels
-            delta = -self.learning_rate * self.learning_rate_mod * da_low * self.pre_trace_ltd
+        elif pre_state == 1 and post_state <= 0:
+            # FIX v2.2505: LTD occurs when pre fires but post does NOT respond (neutral or inhibitory)
+            # Previously required post_state == -1 (inhibitory only ~0.2%), now includes neutral (~95%)
+            # Scale LTD strength: full strength for inhibitory, reduced for neutral
+            # ACh Modulation: If high ACh and no reward (LTP), favors easier forgetting (Paper Claim)
+            ach_forgetting_mult = 1.5 if ach > 0.6 else 1.0
+            
+            ltd_scale = (1.0 if post_state == -1 else 0.3) * ach_forgetting_mult
+            delta = -self.learning_rate * self.learning_rate_mod * da_low * self.pre_trace_ltd * ltd_scale
             self._pending_delta_w = delta
+            # FIX v2.2505: Log LTD event when delta is significant
+            if delta < -0.0001 and logger.log_level >= 2:
+                logger.log_plasticity_event(tick=0, event_type='LTD',
+                                            pre_id=self.pre_id, post_id=self.post_id,
+                                            delta_w=delta)
             return delta
         self._pending_delta_w = 0.0
         return 0.0
@@ -2340,9 +2383,12 @@ class Synapse:
         delta_w = self.potential_delta_w
         own_delta_w = delta_w  # Store for associativity logging
         neighbor_contribution = 0.0
+        ach = neuromodulators.get('acetylcholine', 0.5)
         
         if neighbor_deltas:
-            neighbor_contribution = self.params.associativity_strength * sum(
+            # ACh Modulation: Prioritize neighbors/directions (Paper Claim)
+            associativity_gain = 1.0 + (ach * 0.5)
+            neighbor_contribution = self.params.associativity_strength * associativity_gain * sum(
                 dw / (i + 1) for i, dw in enumerate(neighbor_deltas[:3]))
             delta_w += neighbor_contribution
         
@@ -2354,7 +2400,10 @@ class Synapse:
         self.w_slow = max(-1.0, min(1.0, self.w_slow + dt / self.tau_slow * (-self.w_slow + h_slow + delta_w * 0.1)))
         
         serotonin = neuromodulators.get('serotonin', 0.5)
-        meta_target = delta_w * 0.05 * (1.0 if serotonin > 0.5 else 0.5)
+        # ACh Modulation: Collaborate in stabilizing what dopamine has done (Paper Claim)
+        # Acts alongside Serotonin to lock in changes to the metabotropic weight
+        stabilizer = (1.0 if serotonin > 0.5 else 0.5) * (1.2 if ach > 0.6 else 1.0)
+        meta_target = delta_w * 0.05 * stabilizer
         self.w_meta = max(-0.5, min(0.5, self.w_meta + dt / self.tau_meta * (-self.w_meta + meta_target)))
         
         activity = abs(self.w_fast) + abs(self.w_slow)
@@ -2533,9 +2582,16 @@ class Neuraxon:
         
         total_synaptic, branch_outputs = self._nonlinear_dendritic_integration(synaptic_inputs, modulatory_inputs, dt)
         
+        acetylcholine = neuromodulators.get('acetylcholine', 0.5)
+        norepi = neuromodulators.get('norepinephrine', 0.5)
+        
+        # ACh Modulation: Maintain persistence of state despite environmental fluctuations (Paper Claim)
+        # High ACh suppresses noise (spontaneous firing), focusing the neuron on inputs/memory
+        noise_suppression = 0.4 if acetylcholine > 0.6 else 1.0
+        
         # Use individualized spontaneous_rate
         # Track if firing is spontaneous
-        spont_prob = self.spontaneous_firing_rate * dt * (1.0 + math.cos(self.phase) * 0.3) 
+        spont_prob = self.spontaneous_firing_rate * dt * (1.0 + math.cos(self.phase) * 0.3) * noise_suppression
         is_spontaneous_firing = False
         spontaneous = 0.0
 
@@ -2547,9 +2603,7 @@ class Neuraxon:
             else:
                 # Or force a random strong current (Old method, kept for variety)
                 spontaneous = random.choice([-1.0, 1.0]) * 2.0
-        
-        acetylcholine = neuromodulators.get('acetylcholine', 0.5)
-        norepi = neuromodulators.get('norepinephrine', 0.5)
+                
         threshold_mod = (acetylcholine - 0.5) * 0.5 + sum(modulatory_inputs) * 0.3
         gain = 1.0 + (norepi - 0.5) * 0.4
         
@@ -2769,6 +2823,10 @@ class NeuraxonNetwork:
         self.activation_history = deque(maxlen=1000)
         self.branching_ratio = 1.0 # A measure of network criticality. A value near 1.0 is often optimal.
         
+        # NEW v2.2503: Track excitatory fraction history for adaptive threshold homeostasis
+        self.excitatory_fraction_history = deque(maxlen=200)
+        self.last_adaptive_threshold_tick = 0
+        
         # Construct the network.
         self._initialize_neurons()
         self._initialize_synapses()
@@ -2891,6 +2949,10 @@ class NeuraxonNetwork:
         """A slow-acting plasticity rule that adjusts neuron excitability."""
         if self.step_count % 100 != 0: return 
         
+        # NEW v2.2503: Apply network-wide adaptive threshold homeostasis
+        self._apply_adaptive_threshold_homeostasis()
+        
+        
         logger = get_data_logger()
         
         for neuron in self.all_neurons:
@@ -2914,12 +2976,145 @@ class NeuraxonNetwork:
                         recent_activity
                     )
     
+    def _apply_adaptive_threshold_homeostasis(self):
+        """
+        IMPROVED v2.2507: Criticality-seeking threshold homeostasis.
+        
+        Bioinspired Rationale (Paper Section 7):
+        Biological neural networks maintain criticality through homeostatic scaling
+        of intrinsic excitability. When activity is too low (subcritical), neurons
+        become more excitable; when too high (supercritical), they become less excitable.
+        
+        This implementation directly targets branching ratio σ→1.0 using proportional
+        control, mimicking the continuous adjustment seen in biological homeostasis.
+        
+        Changes from v2.2503:
+        - Targets branching ratio directly instead of just excitatory fraction
+        - Uses proportional control (stronger correction when further from target)
+        - More frequent checks (every 20 ticks vs 50)
+        - Larger adjustment magnitude with bounds
+        - Also modulates oscillator strength as secondary drive
+        """
+        if not self.params.adaptive_threshold_enabled:
+            return
+        
+        # More frequent checking for responsive homeostasis
+        check_interval = max(20, self.params.adaptive_threshold_check_interval // 2)
+        if self.step_count - self.last_adaptive_threshold_tick < check_interval:
+            return
+        
+        self.last_adaptive_threshold_tick = self.step_count
+        
+        # Need sufficient history for reliable branching ratio
+        if len(self.activation_history) < 15:
+            return
+        
+        active_neurons = [n for n in self.all_neurons if n.is_active]
+        if not active_neurons:
+            return
+        
+        # === PRIMARY TARGET: Branching Ratio (Criticality) ===
+        sigma = self.branching_ratio
+        
+        # Critical regime: σ ∈ [0.85, 1.15] - no adjustment needed
+        # This is the "edge of chaos" where information processing is optimal
+        if 0.85 <= sigma <= 1.15:
+            return
+        
+        # Proportional control: adjustment scales with distance from criticality
+        # This mimics biological homeostasis where larger deviations cause stronger responses
+        sigma_error = 1.0 - sigma
+        
+        # Base adjustment magnitude, scaled by error (max 2x base)
+        base_adjustment = self.params.adaptive_threshold_adjustment
+        proportional_gain = min(2.0, 1.0 + abs(sigma_error))
+        adjustment_magnitude = base_adjustment * proportional_gain
+        
+        # === ALSO CHECK: Excitatory Fraction as Secondary Signal ===
+        excitatory_count = sum(1 for n in active_neurons if n.trinary_state == 1)
+        excitatory_fraction = excitatory_count / len(active_neurons)
+        self.excitatory_fraction_history.append(excitatory_fraction)
+        
+        # Determine adjustment direction
+        adjustment = 0.0
+        reason = None
+        
+        if sigma < 0.85:  # Subcritical - network too quiet
+            # Lower thresholds to increase excitability (biological: upregulate Na+ channels)
+            adjustment = -adjustment_magnitude
+            reason = f"subcritical_sigma_{sigma:.3f}_exc_{excitatory_fraction:.3f}"
+            
+            # Secondary boost: increase oscillator drive if very subcritical
+            if sigma < 0.7:
+                self.params.oscillator_strength = min(0.40, 
+                    self.params.oscillator_strength + 0.005)
+        
+        elif sigma > 1.15:  # Supercritical - network too active
+            # Raise thresholds to decrease excitability (biological: upregulate K+ channels)
+            adjustment = adjustment_magnitude
+            reason = f"supercritical_sigma_{sigma:.3f}_exc_{excitatory_fraction:.3f}"
+            
+            # Secondary damping: reduce oscillator drive if very supercritical
+            if sigma > 1.3:
+                self.params.oscillator_strength = max(0.10,
+                    self.params.oscillator_strength - 0.005)
+        
+        # === APPLY GLOBAL THRESHOLD ADJUSTMENT ===
+        if adjustment != 0.0:
+            neurons_adjusted = 0
+            for neuron in active_neurons:
+                # Excitatory threshold: biological range [0.25, 1.2]
+                new_exc_threshold = neuron.firing_threshold_excitatory + adjustment
+                neuron.firing_threshold_excitatory = max(0.25, min(1.2, new_exc_threshold))
+                
+                # Inhibitory threshold: adjust symmetrically, range [-1.2, -0.25]
+                new_inh_threshold = neuron.firing_threshold_inhibitory - adjustment
+                neuron.firing_threshold_inhibitory = max(-1.2, min(-0.25, new_inh_threshold))
+                
+                neurons_adjusted += 1
+            
+            # === LOG THE HOMEOSTATIC EVENT ===
+            logger = get_data_logger()
+            if logger.log_level >= 2:
+                logger.log_homeostatic_event(
+                    tick=self.step_count,
+                    neuron_id=-1,  # -1 indicates network-wide adjustment
+                    old_value=sigma,  # Using sigma as reference
+                    new_value=sigma + adjustment,  # Direction indicator
+                    activity=excitatory_fraction
+                )
+                
+                # Additional detail logging for analysis
+                if hasattr(logger, 'time_series') and 'adaptive_threshold_adjustments' not in logger.time_series:
+                    logger.time_series['adaptive_threshold_adjustments'] = []
+                if hasattr(logger, 'time_series'):
+                    logger.time_series.setdefault('adaptive_threshold_adjustments', []).append({
+                        'tick': self.step_count,
+                        'sigma': sigma,
+                        'excitatory_fraction': excitatory_fraction,
+                        'adjustment': adjustment,
+                        'reason': reason,
+                        'neurons_affected': neurons_adjusted,
+                        'new_oscillator_strength': self.params.oscillator_strength
+                    })
+    
     def _compute_branching_ratio(self):
-        """Calculates the branching ratio (sigma), a measure of how activity propagates."""
-        if len(self.activation_history) < 2: return 1.0
-        activations = list(self.activation_history)
-        denominator = sum(activations[:-1])
-        self.branching_ratio = max(0.1, min(10.0, sum(activations[1:]) / denominator if denominator != 0 else 1.0))
+        """Calculates the branching ratio (sigma): A(t) / A(t-1)."""
+        if len(self.activation_history) < 2:
+            self.branching_ratio = 1.0
+            return 1.0
+        
+        # Get the two most recent time steps
+        a_prev = self.activation_history[-2]
+        a_now  = self.activation_history[-1]
+        
+        # Calculate instantaneous ratio (add small epsilon to avoid div/0)
+        sigma_inst = a_now / (a_prev + 1e-9)
+        
+        # Apply EWMA smoothing (0.95 keep, 0.05 update) for stability
+        # Clamping between 0.1 and 10.0 prevents massive spikes during quiet periods
+        self.branching_ratio = 0.95 * self.branching_ratio + 0.05 * max(0.1, min(10.0, sigma_inst))
+        
         return self.branching_ratio
     
     def simulate_step(self, external_inputs: Optional[Dict[int, float]] = None):
@@ -2949,11 +3144,22 @@ class NeuraxonNetwork:
                     syn_inputs[post_id].append(value)
                     delayed_inputs[post_id].remove((value, delivery_time))
 
+        step_activity_sum = 0.0
+        active_neuron_count = 0
+
         for n in self.all_neurons:
             if not n.is_active: continue
             ext = external_inputs.get(n.id, 0.0) + osc_drive
             n.update(syn_inputs[n.id], mod_inputs[n.id], ext, self.neuromodulators, dt, osc_drive)
-            self.activation_history.append(abs(n.trinary_state))
+            
+            # Aggregate activity for this specific tick
+            step_activity_sum += abs(n.trinary_state)
+            active_neuron_count += 1
+        
+        # Calculate average network activity for this tick (0.0 to 1.0)
+        # Using average is better than sum because it handles population changes (deaths) gracefully
+        current_step_activity = step_activity_sum / max(1, active_neuron_count)
+        self.activation_history.append(current_step_activity)
 
         for s in self.synapses:
             if s.integrity <= 0: continue
@@ -3007,28 +3213,53 @@ class NeuraxonNetwork:
             if (n.health < self.params.neuron_death_threshold or n.energy_level < 5.0) and random.random() < 0.001:
                 n.is_active = False
     
+
+    def _circle_metrics(self, circle):
+        active = [n for n in circle.neurons if n.is_active]
+        if not active:
+            return 0.0, 0.0, 0.0
+
+        # pattern/activity term (same spirit as logger)
+        activity = sum(abs(n.trinary_state) for n in active) / len(active)
+
+        # phase order parameter (this matches what you log in get_energy_status)
+        phases = [n.phase for n in active]
+        if len(phases) >= 2:
+            sync = abs(sum(cmath.exp(1j * p) for p in phases) / len(phases))
+        else:
+            sync = 0.0
+
+        # efficiency should NOT be "avg energy level" (leaks energy into fitness)
+        # approximate per-tick energy spent by this circle
+        spent = sum(n.firing_energy_cost * abs(n.trinary_state) for n in active) + 1e-9
+        efficiency = activity / spent
+
+        return activity, sync, efficiency
+    
     def _evolve_itu_circles(self):
         """
         Executes one evolutionary cycle for all ITUs in the network.
-        UPDATED: Prevents 'Mean of empty slice' warnings when all neurons in a circle are inactive.
+        UPDATED: Uses real physics metrics instead of proxies.
         """
         for circle in self.itu_circles:
-            # Calculate the fitness of the circle based on its recent performance.
-            network_activity = [abs(n.trinary_state) for n in circle.neurons if n.is_active]
-            temporal_sync = abs(math.cos(self.time * 0.1)) # A simple proxy for synchronization.
-                        
-            active_energies = [n.energy_level for n in circle.neurons if n.is_active]
-            avg_energy = np.mean(active_energies) if active_energies else 0.0
+            # Calculate REAL metrics using the new helper
+            activity_val, temporal_sync, energy_efficiency = self._circle_metrics(circle)
             
-            energy_efficiency = avg_energy / self.params.energy_baseline
-            fitness = circle.compute_fitness(network_activity, temporal_sync, energy_efficiency)
+            # Note: compute_fitness expects a list for network_activity for the pattern weight,
+            # but usually just takes the mean. We pass the calculated scalar relative to the circle.
+            # To keep signature valid with existing circle.compute_fitness logic:
+            network_activity_proxy = [activity_val] 
             
-            for n in circle.neurons: n.fitness_score = fitness
+            fitness = circle.compute_fitness(network_activity_proxy, temporal_sync, energy_efficiency)
+            
+            for n in circle.neurons: 
+                n.fitness_score = fitness
             
             # Apply mutation and selection.
             circle.mutate()
-            pruned_ids = circle.prune_unfit_neurons()
-            if pruned_ids: print(f"[EVOLUTION] Circle {circle.circle_id} pruned {len(pruned_ids)} neurons")
+            pruned_ids = circle.prune_unfit_neurons()            
+            #if pruned_ids: 
+             #   print(f"[EVOLUTION] Circle {circle.circle_id} pruned {len(pruned_ids)} neurons")
     
     def set_input_states(self, states: List[int]):
         """Clamps the input neurons to the given trinary states."""
@@ -4236,6 +4467,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         B.stats.mates_performed += 1
         births_count += 1
         child.stats.fitness_score = (A.stats.fitness_score + B.stats.fitness_score) / 2
+        
+        # Paper Claim: Norepinephrine activated somewhat by the birth of offspring per se
+        A.net.neuromodulators['norepinephrine'] = min(2.0, A.net.neuromodulators.get('norepinephrine', 0.12) + 0.15)
+        B.net.neuromodulators['norepinephrine'] = min(2.0, B.net.neuromodulators.get('norepinephrine', 0.12) + 0.15)
+        
         return child
         
     for i in range(StartingNxErs):
@@ -4962,6 +5198,15 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
 
                 for a in nxers.values():
                     if not a.alive or a.mating_with is not None: continue
+                    
+                    # Paper Claim: If Norepinephrine is high, it could increase movement speed
+                    # We modulate ticks_per_action (lower = faster) based on NE level
+                    ne_level = a.net.neuromodulators.get('norepinephrine', 0.12)
+                    base_speed = max(1, int(GlobalTimeSteps / max(1, a.net.params.simulation_steps)))
+                    # Apply speed boost if NE is elevated (> 0.25)
+                    speed_modifier = max(0.4, 1.0 - (ne_level * 0.5)) if ne_level > 0.25 else 1.0
+                    a.ticks_per_action = max(1, int(base_speed * speed_modifier))
+                    
                     a.tick_accum += 1
                     if a.tick_accum >= a.ticks_per_action:
                         a.tick_accum = 0
@@ -4975,6 +5220,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             
                             # 5. Sight (Line of sight in heading)
                             sight_val = -1
+                            seen_neighbors_count = 0
+                            seen_different_clan = False
                             vx, vy = DIR_OFFSETS[a.heading]
                             found_obj = False
                             for dist in range(1, a.vision_range + 1):
@@ -4986,9 +5233,19 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 if (tx, ty) in occupant_at:
                                     other_id = occupant_at[(tx, ty)]
                                     other_a = nxers[other_id]
+                                    seen_neighbors_count += 1
+                                    if a.clan_id is not None and other_a.clan_id is not None and a.clan_id != other_a.clan_id:
+                                        seen_different_clan = True
                                     sight_val = 0 if (other_a.clan_id is not None and other_a.clan_id == a.clan_id) else -1
                                     found_obj = True; break
                             if not found_obj: sight_val = -1
+                            
+                            # Paper Claim: NE activated by high population density and proximity to members of different clans
+                            ne_boost = 0.0
+                            if seen_neighbors_count >= 3: ne_boost += 0.05
+                            if seen_different_clan: ne_boost += 0.10 # "Surprise/Threat"
+                            if ne_boost > 0:
+                                a.net.neuromodulators['norepinephrine'] = min(2.0, a.net.neuromodulators.get('norepinephrine', 0.12) + ne_boost)
                             
                             # 6. Smell (Square Radius)
                             smell_val = -1
@@ -5182,6 +5439,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                     1.2,
                                     a.net.neuromodulators['serotonin'] + 0.05
                                 )
+                                
+                                # Paper Claim: NE activated by proximity to food after a rise in dopamine
+                                if a.net.neuromodulators['dopamine'] > 0.4:
+                                    a.net.neuromodulators['norepinephrine'] = min(2.0, a.net.neuromodulators.get('norepinephrine', 0.12) + 0.1)
+                                
                                 if a.food <= 0 and a.alive:
                                     a.alive = False; a.died_ts = time.time(); deaths_count += 1
                                     data_logger.log_nxer_event(step_tick, 'died', a.id, {'cause': 'harvesting_exhaustion', 'name': a.name})
@@ -5227,6 +5489,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     contenders = lst[:]
                     want = contenders
                     if len(want) > 1:
+                        # Paper Claim: NE activated by competition with others for food or offspring
+                        # Multiple agents wanting the same tile implies direct competition
+                        for (aid_comp, _, _, _) in want:
+                             nxers[aid_comp].net.neuromodulators['norepinephrine'] = min(2.0, nxers[aid_comp].net.neuromodulators.get('norepinephrine', 0.12) + 0.2)
+                        
                         for (aid, O3, O4, tt) in want:
                             giver = nxers[aid]
                             if O3 == 1 and giver.food > 1.0:
