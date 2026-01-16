@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.27 (Research Version): Serotonin Dynamics update
+# Neuraxon Game of Life v.2.28 (Research Version): Dopamine Dynamics update
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -20,6 +20,7 @@
 # New features in v2.2508: norepinephrine update
 # New features in v2.26: acetylcholine update (Consolidation, Associativity, Persistence)
 # New features in v2.27: Serotonin update (Behavioral modulation: Serenity vs Impulse/Risk-taking)
+# New features in v2.28: Dopamine update (Behavioral modulation: Novelty Seeking vs Interaction with other clans)
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -5235,6 +5236,22 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         if step_tick < boot_random_until:
                             inputs = [random.choice([-1, 0, 1]) for _ in range(6)]
                         else:
+                            # [DOPAMINE UPDATE] Disappointment Dynamics
+                            # Paper Claim: "It has to decrease when expectations fail (I look for food but don't find it)"
+                            # Check previous inputs: Index 4 (Sight) or 5 (Smell) == 1 means Food was expected.
+                            was_expecting_food = (a.last_inputs[4] == 1 or a.last_inputs[5] == 1)
+                            # We approximate "didn't find" by checking if food level didn't increase significantly 
+                            # (accounting for metabolic decay). Storing _prev_food allows this delta check.
+                            if was_expecting_food and getattr(a, '_prev_food', 0) >= a.food:
+                                a.net.neuromodulators['dopamine'] = max(0.0, a.net.neuromodulators.get('dopamine', 0.12) - 0.05)
+                            
+                            # [DOPAMINE UPDATE] High Levels favor Risk-Taking/Exploration
+                            # Paper Claim: "Higher levels favor risk-taking, exploration"
+                            if a.net.neuromodulators.get('dopamine', 0.12) > 0.6:
+                                # Exploration: 10% chance to randomly change heading regardless of inputs
+                                if random.random() < 0.10:
+                                    a.heading = random.randint(0, 7)
+                            
                             # 4. Hunger
                             hunger_val = 0
                             if a.food < (StartFood * 0.2): hunger_val = -1
@@ -5250,7 +5267,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 t_type = world.terrain((tx, ty))
                                 if t_type == T_ROCK: break
                                 if (tx, ty) in food_at:
-                                    sight_val = 1; found_obj = True; break
+                                    sight_val = 1; found_obj = True; 
+                                    # [DOPAMINE UPDATE] Anticipation (Visual Food Cue)
+                                    # Paper Claim: "Dopamine – triggered by... visual food cues"
+                                    a.net.neuromodulators['dopamine'] = min(2.0, a.net.neuromodulators.get('dopamine', 0.12) + 0.02)
+                                    break
                                 if (tx, ty) in occupant_at:
                                     other_id = occupant_at[(tx, ty)]
                                     other_a = nxers[other_id]
@@ -5258,7 +5279,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                     if a.clan_id is not None and other_a.clan_id is not None and a.clan_id != other_a.clan_id:
                                         seen_different_clan = True
                                     sight_val = 0 if (other_a.clan_id is not None and other_a.clan_id == a.clan_id) else -1
-                                    found_obj = True; break
+                                    found_obj = True;
+                                    # [DOPAMINE UPDATE] Anticipation (Possible Mating)
+                                    if a.is_male != other_a.is_male and can_mate(a, other_a, step_tick):
+                                        a.net.neuromodulators['dopamine'] = min(2.0, a.net.neuromodulators.get('dopamine', 0.12) + 0.05)
+                                    break
                             if not found_obj: sight_val = -1
                             
                             # Paper Claim: NE activated by high population density and proximity to members of different clans
@@ -5277,7 +5302,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                     sx, sy = wrap_pos((a.pos[0] + dx, a.pos[1] + dy))
                                     if (sx, sy) in food_at: found_food_smell = True
                                     if (sx, sy) in occupant_at: found_nxer_smell = True
-                            if found_food_smell: smell_val = 1
+                            if found_food_smell: 
+                                smell_val = 1
+                                # [DOPAMINE UPDATE] Anticipation (Olfactory Food Cue)
+                                # Paper Claim: "Dopamine – triggered by olfactory... food cues"
+                                a.net.neuromodulators['dopamine'] = min(2.0, a.net.neuromodulators.get('dopamine', 0.12) + 0.02)
                             elif found_nxer_smell: smell_val = 0
                             else: smell_val = -1
 
@@ -5289,6 +5318,9 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             inputs[5] = smell_val
                         
                         a.last_inputs = tuple(inputs)
+                        # [DOPAMINE UPDATE] Store current food for next tick's disappointment check
+                        a._prev_food = a.food
+                        
                         netdict = a.net.to_dict()
                         idle_seconds = max(0.0, (step_tick - a.last_move_tick) / GlobalTimeSteps)
                         netdict['parameters']['metabolic_rate'] *= (1.0 + METABOLIC_RAMP_PER_SEC * idle_seconds)
@@ -5433,7 +5465,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     
                     # Stealing Logic (Family Check)
                     same_clan = (A.clan_id is not None and B.clan_id is not None and A.clan_id == B.clan_id)
-                    if not same_clan:
+                    
+                    # [DOPAMINE UPDATE] Novelty / Interaction with other clans
+                    # Paper Claim: "Higher levels favor... interaction with other clans."
+                    # If Dopamine is high (Novelty Seeking), suppress the hostile stealing logic for different clans
+                    is_novelty_seeking = (A.net.neuromodulators.get('dopamine', 0.12) > 0.7)
+                    
+                    if not same_clan and not is_novelty_seeking:
                         # NEW v2.27: Impulse vs Serenity
                         # "With low serotonin... increases probability of stealing"
                         # "With high serotonin, I don't steal"
@@ -5468,10 +5506,16 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 f.remaining -= 1; a.food += 1.0; a.stats.food_found += 1.0
                                 a.food -= 0.1
                                                                 
-                                # Boost dopamine when food is found (reward signal)
+                                # [DOPAMINE UPDATE] Surprise vs Expectation
+                                # Paper Claim: "strongly by unexpected positive surprise"
+                                # Check if we saw (4) or smelled (5) food in last inputs
+                                expected = (a.last_inputs[4] == 1 or a.last_inputs[5] == 1)
+                                surprise_multiplier = 2.5 if not expected else 1.0
+                                base_reward = 0.15
+                                
                                 a.net.neuromodulators['dopamine'] = min(
-                                    1.5,  # Cap at 1.5
-                                    a.net.neuromodulators['dopamine'] + 0.15  # Significant boost
+                                    2.0,
+                                    a.net.neuromodulators['dopamine'] + (base_reward * surprise_multiplier)
                                 )
                                 # Also give a small serotonin boost for "satisfaction"
                                 a.net.neuromodulators['serotonin'] = min(
