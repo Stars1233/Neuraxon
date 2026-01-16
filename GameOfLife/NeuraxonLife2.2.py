@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.26 (Research Version): Neuromodulators update
+# Neuraxon Game of Life v.2.27 (Research Version): Serotonin Dynamics update
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -8,7 +8,18 @@
 # New features in v2.23: God mode disabled and improved biological parameters
 # New features in v2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance
 # New features in v2.25: Log Mode 3 enabled for deep detailed timeseries at non agragated Nxer level
-# New features in v2.26: Neuromodulators update
+# New features in v2.2501: "metric mismatch" in ITU evolution fitness
+# New features in v2.2502: upgraded branching ratio measurement
+# New features in v2.2503: Excitability rebalancing for criticality (Proposal 1) up to 0.45 
+#   - Lowered firing thresholds, increased spontaneous firing and oscillator strength
+#   - Added adaptive network-wide threshold homeostasis based on excitatory fraction
+# New features in v2.2504: Reduced adaptation rate to 0.02 to reduce the impact of inputs on the network
+# New features in v2.2505: dopamine_low_affinity_threshold Lowered
+# New features in v2.2506: LTP/LTD recording update
+# New features in v2.2507: adaptive_threshold_homeostasis update
+# New features in v2.2508: norepinephrine update
+# New features in v2.26: acetylcholine update (Consolidation, Associativity, Persistence)
+# New features in v2.27: Serotonin update (Behavioral modulation: Serenity vs Impulse/Risk-taking)
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -5179,6 +5190,16 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     # 3. Apply consumption                    
                     a.food -= 0.01 * FIXED_DT * atrophy_factor
                     
+                    # NEW v2.27: Serotonin Learning Dynamics (Evaluates trends)
+                    # "This made me feel good" (Stability/Satiety) -> serotonin increases
+                    current_serotonin = a.net.neuromodulators.get('serotonin', 0.12)
+                    if a.food > StartFood * 0.6:
+                        a.net.neuromodulators['serotonin'] = min(2.0, current_serotonin + 0.002)
+                    # "This was very risky, difficult, or bad for us" (Starvation risk) -> serotonin decreases
+                    elif a.food < StartFood * 0.25:
+                        a.net.neuromodulators['serotonin'] = max(0.0, current_serotonin * 0.99)
+                        
+                    
                     if a.food <= 0 and a.alive:
                         a.alive = False; a.died_ts = time.time(); deaths_count += 1
                         data_logger.log_nxer_event(step_tick, 'died', a.id, {'cause': 'starvation', 'name': a.name})
@@ -5392,9 +5413,18 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     prevA = list(A.last_inputs); prevA[0:3] = [-1, 1, (1 if world.terrain(tgt)==T_LAND else 0)]; A.last_inputs = tuple(prevA)
                     prevB = list(B.last_inputs); prevB[0:3] = [-1, 1, (1 if world.terrain(A.pos)==T_LAND else 0)]; B.last_inputs = tuple(prevB)
                     
-                    if O4 == 1 or random.random() < 0.03: 
+                    # NEW v2.27: Serotonin Behavioral Modulation
+                    ser_A = A.net.neuromodulators.get('serotonin', 0.12)
+                    ser_B = B.net.neuromodulators.get('serotonin', 0.12)
+                    
+                    # High Serotonin increases mating probability (Maintenance/Stability)
+                    mating_boost_A = 0.05 if ser_A > 0.6 else 0.0
+                    mating_boost_B = 0.05 if ser_B > 0.6 else 0.0
+
+                    if O4 == 1 or random.random() < (0.03 + mating_boost_A): 
                         A.mating_intent_until_tick = step_tick + 6 * GlobalTimeSteps
-                    if getattr(B, "_last_O4", 0) == 1 or random.random() < 0.03: B.mating_intent_until_tick = step_tick + 3 * GlobalTimeSteps
+                    if getattr(B, "_last_O4", 0) == 1 or random.random() < (0.03 + mating_boost_B): 
+                        B.mating_intent_until_tick = step_tick + 3 * GlobalTimeSteps
                     if (A.mating_intent_until_tick > step_tick and B.mating_intent_until_tick > step_tick and can_mate(A, B, step_tick)):
                         A.mating_with = B.id; B.mating_with = A.id; dur = max(A.net.params.simulation_steps, B.net.params.simulation_steps)
                         A.mating_end_tick = step_tick + dur; B.mating_end_tick = step_tick + dur; A.food -= 1; B.food -= 1
@@ -5404,9 +5434,18 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     # Stealing Logic (Family Check)
                     same_clan = (A.clan_id is not None and B.clan_id is not None and A.clan_id == B.clan_id)
                     if not same_clan:
-                        data_logger.log_nxer_event(step_tick, 'stealing_attempt', A.id, {'target': B.id})
-                        if (O4 == -1 or O3 == -1 or (A.food < 2 and B.food > 3 and random.random() < 0.3)) and B.food > 0:
-                            B.food -= 1; A.food += 1; A.stats.food_taken += 1
+                        # NEW v2.27: Impulse vs Serenity
+                        # "With low serotonin... increases probability of stealing"
+                        # "With high serotonin, I don't steal"
+                        impulse_to_steal = 0.4 if ser_A < 0.3 else 0.0
+                        is_serene = (ser_A > 0.6 and A.food > 5.0)
+                        
+                        if not is_serene:
+                            if (O4 == -1 or O3 == -1 or (A.food < 2 and B.food > 3 and random.random() < (0.3 + impulse_to_steal))) and B.food > 0:
+                                data_logger.log_nxer_event(step_tick, 'stealing_attempt', A.id, {'target': B.id, 'serotonin': ser_A})
+                                B.food -= 1; A.food += 1; A.stats.food_taken += 1
+                                # Stealing is risky/conflict -> serotonin drop
+                                A.net.neuromodulators['serotonin'] = max(0.0, ser_A * 0.98)
                             
                     A._last_O4 = O4; handled_swap.add(aid); handled_swap.add(occ)
 
@@ -5480,9 +5519,16 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 data_logger.log_nxer_event(step_tick, 'mating', a.id, {'partner': b.id})
                             same_clan = (a.clan_id is not None and b.clan_id is not None and a.clan_id == b.clan_id)
                             if not same_clan:
-                                data_logger.log_nxer_event(step_tick, 'stealing_attempt', a.id, {'target': b.id})
-                                if (O4 == -1 or O3 == -1 or (a.food < 2 and b.food > 3 and random.random() < 0.3)) and b.food > 0:
-                                    b.food -= 1; a.food += 1; a.stats.food_taken += 1
+                                ser_a = a.net.neuromodulators.get('serotonin', 0.12)
+                                impulse_to_steal = 0.4 if ser_a < 0.3 else 0.0
+                                is_serene = (ser_a > 0.6 and a.food > 5.0)
+                                
+                                if not is_serene:
+                                    if (O4 == -1 or O3 == -1 or (a.food < 2 and b.food > 3 and random.random() < (0.3 + impulse_to_steal))) and b.food > 0:
+                                        data_logger.log_nxer_event(step_tick, 'stealing_attempt', a.id, {'target': b.id, 'serotonin': ser_a})
+                                        b.food -= 1; a.food += 1; a.stats.food_taken += 1
+                                        a.net.neuromodulators['serotonin'] = max(0.0, ser_a * 0.98)
+                                        
                             a._last_O4 = O4
                         continue
                     
