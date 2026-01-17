@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.29 (Research Version): Global NeuroModulator updates
+# Neuraxon Game of Life v.2.30 (Research Version): Energy-Aware Firing Threshold
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -22,6 +22,7 @@
 # New features in v2.27: Serotonin update (Behavioral modulation: Serenity vs Impulse/Risk-taking)
 # New features in v2.28: Dopamine update (Behavioral modulation: Novelty Seeking vs Interaction with other clans)
 # New features in v2.29: Global NeuroModulator updates
+# New features in v2.30: Energy-Aware Firing Threshold
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -2175,6 +2176,14 @@ class NetworkParameters:
     metabolic_rate: float = 1.0 
     recovery_rate: float = 0.5 
     
+    # --- Energy-Aware Threshold Homeostasis (NEW in v2.30) ---
+    # BIOINSPIRED: Models ATP depletion effects on ion channel dynamics
+    # In biology, low ATP impairs Na+/K+-ATPase, raising effective firing threshold
+    energy_threshold_coupling: float = 0.5  # How strongly energy affects threshold (0=none, 1=strong)
+    energy_threshold_floor: float = 0.3  # Minimum energy fraction before threshold scaling activates
+    energy_recovery_boost: float = 2.0  # Enhanced recovery rate multiplier for low-energy neurons
+    critical_energy_level: float = 30.0  # Energy level below which recovery boost activates
+    
     # --- Homeostasis ---
     target_firing_rate: float = 0.1 
     homeostatic_plasticity_rate: float = 0.001 
@@ -2562,7 +2571,20 @@ class Neuraxon:
         if not self.is_active: return
         # Use individualized metabolic parameters
         consumption = self.metabolic_rate * (self.firing_energy_cost * activity + self.plasticity_energy_cost * plasticity_cost) * dt
-        recovery = self.recovery_rate * (1.0 - activity) * dt
+        
+        # NEW v2.30: Energy-aware recovery boost for metabolically stressed neurons
+        # BIOINSPIRED: Neurons in metabolic crisis prioritize ATP regeneration
+        # This mimics increased mitochondrial activity under low-ATP conditions
+        base_recovery = self.recovery_rate * (1.0 - activity) * dt
+        
+        if self.energy_level < self.params.critical_energy_level:
+            # Boost recovery when energy is critically low
+            # Scale boost by how far below critical threshold we are
+            energy_deficit_ratio = 1.0 - (self.energy_level / self.params.critical_energy_level)
+            recovery_multiplier = 1.0 + (self.params.energy_recovery_boost - 1.0) * energy_deficit_ratio
+            recovery = base_recovery * recovery_multiplier
+        else:
+            recovery = base_recovery
         
         self.energy_level = max(0.0, min(self.energy_baseline * 1.5, self.energy_level + recovery - consumption))
         
@@ -2633,9 +2655,23 @@ class Neuraxon:
         self.adaptation += dt / 100.0 * (-self.adaptation + 0.1 * abs(self.trinary_state))
         self.autoreceptor += dt / 200.0 * (-self.autoreceptor + 0.2 * self.trinary_state)
         
-        # Use individualized firing thresholds
-        theta_exc = self.firing_threshold_excitatory - threshold_mod - 0.1 * self.autoreceptor
-        theta_inh = self.firing_threshold_inhibitory - threshold_mod + 0.1 * self.autoreceptor
+        # NEW v2.30: Energy-Aware Firing Threshold
+        # BIOINSPIRED: ATP depletion impairs Na+/K+-ATPase pump efficiency
+        # This raises the effective firing threshold, making low-energy neurons less excitable
+        # Creates natural metabolic recovery windows while maintaining network criticality
+        
+        # Calculate energy factor: 1.0 when energy is high, <1.0 when depleted
+        energy_ratio = self.energy_level / (self.energy_baseline * self.params.energy_threshold_floor)
+        energy_factor = min(1.0, max(0.3, energy_ratio))  # Clamp between 0.3 and 1.0
+        
+        # Energy-dependent threshold scaling: low energy raises effective threshold
+        # energy_factor=1.0 -> no change; energy_factor=0.3 -> threshold raised by ~3.3x coupling factor
+        threshold_energy_mod = (1.0 - energy_factor) * self.params.energy_threshold_coupling * self.firing_threshold_excitatory
+        
+        # Apply all threshold modulations
+        # Note: threshold_energy_mod ADDS to threshold (making firing harder when energy is low)
+        theta_exc = self.firing_threshold_excitatory - threshold_mod - 0.1 * self.autoreceptor + threshold_energy_mod
+        theta_inh = self.firing_threshold_inhibitory - threshold_mod + 0.1 * self.autoreceptor - threshold_energy_mod
         
         if self.membrane_potential > theta_exc: self.trinary_state = TrinaryState.EXCITATORY.value
         elif self.membrane_potential < theta_inh: self.trinary_state = TrinaryState.INHIBITORY.value
