@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.28 (Research Version): Dopamine Dynamics update
+# Neuraxon Game of Life v.2.29 (Research Version): Global NeuroModulator updates
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -21,6 +21,7 @@
 # New features in v2.26: acetylcholine update (Consolidation, Associativity, Persistence)
 # New features in v2.27: Serotonin update (Behavioral modulation: Serenity vs Impulse/Risk-taking)
 # New features in v2.28: Dopamine update (Behavioral modulation: Novelty Seeking vs Interaction with other clans)
+# New features in v2.29: Global NeuroModulator updates
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -2955,7 +2956,18 @@ class NeuraxonNetwork:
             laplacian[1:-1, 1:-1] = grid[2:, 1:-1] + grid[:-2, 1:-1] + grid[1:-1, 2:] + grid[1:-1, :-2] - 4 * grid[1:-1, 1:-1]
             self.modulator_grid[:, :, i] += self.params.diffusion_rate * laplacian * dt
             base = getattr(self.params, f'{mod}_baseline')
-            self.neuromodulators[mod] += (base - self.neuromodulators[mod]) * self.params.neuromod_decay_rate * dt / 100.0
+            
+            # --- Antagonistic Decay Dynamics (Paper Claim) ---
+            # DA and 5-HT are antagonists. To each natural decay, the opposite one can be added.
+            decay_factor = 1.0
+            if mod == 'dopamine':
+                antagonist = self.neuromodulators.get('serotonin', 0.12)
+                if antagonist > 0.5: decay_factor += (antagonist - 0.5)
+            elif mod == 'serotonin':
+                antagonist = self.neuromodulators.get('dopamine', 0.12)
+                if antagonist > 0.5: decay_factor += (antagonist - 0.5)
+            
+            self.neuromodulators[mod] += (base - self.neuromodulators[mod]) * self.params.neuromod_decay_rate * decay_factor * dt / 100.0
     
     def _apply_homeostatic_plasticity(self):
         """A slow-acting plasticity rule that adjusts neuron excitability."""
@@ -5191,11 +5203,15 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     # 3. Apply consumption                    
                     a.food -= 0.01 * FIXED_DT * atrophy_factor
                     
-                    # NEW v2.27: Serotonin Learning Dynamics (Evaluates trends)
+                    # NEW v2.28: Behavioral Modulation Scenarios (Consolidation)
                     # "This made me feel good" (Stability/Satiety) -> serotonin increases
                     current_serotonin = a.net.neuromodulators.get('serotonin', 0.12)
+                    current_ach = a.net.neuromodulators.get('acetylcholine', 0.12)
+                    
                     if a.food > StartFood * 0.6:
+                        # Consolidation scenario: 5-HT and ACh increase.
                         a.net.neuromodulators['serotonin'] = min(2.0, current_serotonin + 0.002)
+                        a.net.neuromodulators['acetylcholine'] = min(2.0, current_ach + 0.001)
                     # "This was very risky, difficult, or bad for us" (Starvation risk) -> serotonin decreases
                     elif a.food < StartFood * 0.25:
                         a.net.neuromodulators['serotonin'] = max(0.0, current_serotonin * 0.99)
@@ -5245,12 +5261,27 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             if was_expecting_food and getattr(a, '_prev_food', 0) >= a.food:
                                 a.net.neuromodulators['dopamine'] = max(0.0, a.net.neuromodulators.get('dopamine', 0.12) - 0.05)
                             
-                            # [DOPAMINE UPDATE] High Levels favor Risk-Taking/Exploration
-                            # Paper Claim: "Higher levels favor risk-taking, exploration"
-                            if a.net.neuromodulators.get('dopamine', 0.12) > 0.6:
-                                # Exploration: 10% chance to randomly change heading regardless of inputs
-                                if random.random() < 0.10:
+                            # [BEHAVIORAL SCENARIOS] Risk, Hyperactivity, Danger
+                            da_level = a.net.neuromodulators.get('dopamine', 0.12)
+                            ser_level = a.net.neuromodulators.get('serotonin', 0.12)
+                            ach_level = a.net.neuromodulators.get('acetylcholine', 0.12)
+                            ne_level = a.net.neuromodulators.get('norepinephrine', 0.12)
+
+                            # Hyperactivity scenario*: High DA but low ACh.
+                            is_hyperactive = (da_level > 0.6 and ach_level < 0.3)
+                            
+                            # Risk-taking: High DA, low serotonin -> increased risk-taking
+                            if (da_level > 0.6 and ser_level < 0.4) or is_hyperactive:
+                                # Hyperactivity triggers randomness more often
+                                chance = 0.25 if is_hyperactive else 0.10
+                                if random.random() < chance:
                                     a.heading = random.randint(0, 7)
+                            
+                            # Danger scenario*: All low (implied by bad health/food) or NA high.
+                            # Survival mode: NA increases, ACh increases for focus.
+                            if (a.food < StartFood * 0.2 or a.net.all_neurons[0].health < 0.3) or ne_level > 0.7:
+                                a.net.neuromodulators['norepinephrine'] = min(2.0, ne_level + 0.05)
+                                a.net.neuromodulators['acetylcholine'] = min(2.0, ach_level + 0.02)
                             
                             # 4. Hunger
                             hunger_val = 0
@@ -5484,6 +5515,10 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 B.food -= 1; A.food += 1; A.stats.food_taken += 1
                                 # Stealing is risky/conflict -> serotonin drop
                                 A.net.neuromodulators['serotonin'] = max(0.0, ser_A * 0.98)
+                                
+                                # Stress scenario*: High DA (Reward), very high NA (Stress).
+                                A.net.neuromodulators['dopamine'] = min(2.0, A.net.neuromodulators.get('dopamine', 0.12) + 0.1)
+                                A.net.neuromodulators['norepinephrine'] = min(2.0, A.net.neuromodulators.get('norepinephrine', 0.12) + 0.2)
                             
                     A._last_O4 = O4; handled_swap.add(aid); handled_swap.add(occ)
 
@@ -5517,10 +5552,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                     2.0,
                                     a.net.neuromodulators['dopamine'] + (base_reward * surprise_multiplier)
                                 )
-                                # Also give a small serotonin boost for "satisfaction"
-                                a.net.neuromodulators['serotonin'] = min(
-                                    1.2,
-                                    a.net.neuromodulators['serotonin'] + 0.05
+                                
+                                # Exploration scenario: If something works, DA increases and ACh increases.
+                                a.net.neuromodulators['acetylcholine'] = min(
+                                    2.0,
+                                    a.net.neuromodulators.get('acetylcholine', 0.12) + 0.05
                                 )
                                 
                                 # Paper Claim: NE activated by proximity to food after a rise in dopamine
