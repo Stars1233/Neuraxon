@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.30 (Research Version): Energy-Aware Firing Threshold
+# Neuraxon Game of Life v.2.31 (Research Version): Synaptic Weight Homeostasis  
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -23,6 +23,7 @@
 # New features in v2.28: Dopamine update (Behavioral modulation: Novelty Seeking vs Interaction with other clans)
 # New features in v2.29: Global NeuroModulator updates
 # New features in v2.30: Energy-Aware Firing Threshold
+# New features in v2.31: Synaptic Weight Homeostasis
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -2172,6 +2173,21 @@ class NetworkParameters:
     # --- Energy Metabolism ---
     energy_baseline: float = 100.0 
     firing_energy_cost: float = 5.0  
+    
+    # --- Synaptic Weight Homeostasis (NEW in v2.31) ---
+    # BIOINSPIRED: Models synaptic scaling (Turrigiano & Nelson, 2004)
+    # Biological neurons maintain stable total synaptic drive through
+    # multiplicative scaling that preserves relative weight differences
+    weight_homeostasis_enabled: bool = True  # Enable synaptic scaling
+    weight_homeostasis_interval: int = 50  # Apply scaling every N steps
+    weight_saturation_threshold: float = 0.75  # Mean |weight| triggering scaling
+    weight_homeostasis_target: float = 0.5  # Target mean |weight| after scaling
+    weight_homeostasis_rate: float = 0.02  # How fast to approach target (soft scaling)
+    weight_drift_correction: float = 0.005  # Per-step drift toward zero for Δw balance
+    max_weight_magnitude: float = 0.95  # Hard ceiling to prevent saturation
+    min_weight_magnitude: float = -0.95  # Hard floor to prevent saturation
+    ltp_ltd_balance_target: float = 1.0  # Target LTP/LTD ratio
+    ltp_ltd_correction_rate: float = 0.01  # Rate of correcting LTP/LTD imbalance
     plasticity_energy_cost: float = 10.0 
     metabolic_rate: float = 1.0 
     recovery_rate: float = 0.5 
@@ -2417,16 +2433,24 @@ class Synapse:
         h_fast = self.pre_trace
         h_slow = 0.5 * self.pre_trace + 0.5 * self.post_trace
         
-        # Use localized tau_fast, tau_slow, tau_meta
-        self.w_fast = max(-1.0, min(1.0, self.w_fast + dt / self.tau_fast * (-self.w_fast + h_fast + delta_w * 0.3)))
-        self.w_slow = max(-1.0, min(1.0, self.w_slow + dt / self.tau_slow * (-self.w_slow + h_slow + delta_w * 0.1)))
+        # Use localized tau_fast, tau_slow, tau_meta with saturation prevention
+        # NEW v2.31: Apply hard ceiling/floor to prevent weight saturation
+        max_w = self.params.max_weight_magnitude
+        min_w = self.params.min_weight_magnitude
+        
+        new_w_fast = self.w_fast + dt / self.tau_fast * (-self.w_fast + h_fast + delta_w * 0.3)
+        self.w_fast = max(min_w, min(max_w, new_w_fast))
+        
+        new_w_slow = self.w_slow + dt / self.tau_slow * (-self.w_slow + h_slow + delta_w * 0.1)
+        self.w_slow = max(min_w, min(max_w, new_w_slow))
         
         serotonin = neuromodulators.get('serotonin', 0.5)
         # ACh Modulation: Collaborate in stabilizing what dopamine has done (Paper Claim)
         # Acts alongside Serotonin to lock in changes to the metabotropic weight
         stabilizer = (1.0 if serotonin > 0.5 else 0.5) * (1.2 if ach > 0.6 else 1.0)
         meta_target = delta_w * 0.05 * stabilizer
-        self.w_meta = max(-0.5, min(0.5, self.w_meta + dt / self.tau_meta * (-self.w_meta + meta_target)))
+        new_w_meta = self.w_meta + dt / self.tau_meta * (-self.w_meta + meta_target)
+        self.w_meta = max(-0.5, min(0.5, new_w_meta))
         
         activity = abs(self.w_fast) + abs(self.w_slow)
         self.integrity = min(1.0, self.integrity + 0.001 * dt * activity) if activity >= 0.01 else self.integrity - self.params.synapse_death_prob * dt
@@ -3158,6 +3182,134 @@ class NeuraxonNetwork:
                         'new_oscillator_strength': self.params.oscillator_strength
                     })
     
+    def _apply_synaptic_weight_homeostasis(self):
+        """
+        NEW v2.31: Synaptic scaling for weight homeostasis.
+        
+        BIOINSPIRED RATIONALE (Turrigiano et al., 1998; Turrigiano & Nelson, 2004):
+        Biological synapses undergo "synaptic scaling" - a homeostatic mechanism where
+        total synaptic strength is multiplicatively normalized to prevent runaway
+        excitation while preserving the relative differences between weights
+        (which encode learned information).
+        
+        This addresses the weight drift problem identified in HF52/HF53 analysis:
+        - HF52: Δw = 0.294, weights approaching saturation (0.82-0.90)
+        - HF53: Δw = 0.441 (50% worse after energy patch)
+        
+        The mechanism works in three stages:
+        1. DETECTION: Monitor per-neuron outgoing weight distribution
+        2. SOFT SCALING: When mean |weight| exceeds threshold, apply multiplicative scaling
+        3. DRIFT CORRECTION: Apply small bias toward zero to counteract systematic drift
+        
+        Key property: Multiplicative scaling preserves relative weight ratios,
+        so learned patterns (which depend on relative strengths) are maintained.
+        """
+        if not self.params.weight_homeostasis_enabled:
+            return
+        
+        # Apply at regular intervals (not every step for efficiency)
+        if self.step_count % self.params.weight_homeostasis_interval != 0:
+            return
+        
+        if not self.synapses:
+            return
+        
+        # === STAGE 1: COMPUTE GLOBAL WEIGHT STATISTICS ===
+        all_w_fast = [s.w_fast for s in self.synapses if s.integrity > 0]
+        all_w_slow = [s.w_slow for s in self.synapses if s.integrity > 0]
+        
+        if not all_w_fast:
+            return
+        
+        mean_abs_w_fast = sum(abs(w) for w in all_w_fast) / len(all_w_fast)
+        mean_abs_w_slow = sum(abs(w) for w in all_w_slow) / len(all_w_slow)
+        mean_w_fast = sum(all_w_fast) / len(all_w_fast)  # Signed mean (for drift detection)
+        mean_w_slow = sum(all_w_slow) / len(all_w_slow)
+        
+        # === STAGE 2: PER-NEURON SYNAPTIC SCALING ===
+        # Group synapses by presynaptic neuron (outgoing weights)
+        neuron_synapses = defaultdict(list)
+        for s in self.synapses:
+            if s.integrity > 0:
+                neuron_synapses[s.pre_id].append(s)
+        
+        scaling_events = 0
+        
+        for pre_id, synapses in neuron_synapses.items():
+            if not synapses:
+                continue
+            
+            # Calculate mean absolute weight for this neuron's outgoing synapses
+            local_w_fast = [s.w_fast for s in synapses]
+            local_w_slow = [s.w_slow for s in synapses]
+            
+            local_mean_fast = sum(abs(w) for w in local_w_fast) / len(local_w_fast)
+            local_mean_slow = sum(abs(w) for w in local_w_slow) / len(local_w_slow)
+            
+            # Check if scaling needed (weights approaching saturation)
+            needs_scaling_fast = local_mean_fast > self.params.weight_saturation_threshold
+            needs_scaling_slow = local_mean_slow > self.params.weight_saturation_threshold
+            
+            if needs_scaling_fast or needs_scaling_slow:
+                scaling_events += 1
+                
+                for s in synapses:
+                    # SOFT MULTIPLICATIVE SCALING
+                    # Scale factor approaches target/current ratio gradually
+                    # This preserves relative weight differences (learned patterns)
+                    
+                    if needs_scaling_fast and abs(s.w_fast) > 0.01:
+                        # Compute scaling factor to move toward target
+                        current_scale = abs(s.w_fast) / local_mean_fast
+                        target_scale = self.params.weight_homeostasis_target / local_mean_fast
+                        
+                        # Soft scaling: gradually approach target
+                        scale_factor = 1.0 - self.params.weight_homeostasis_rate * (1.0 - target_scale)
+                        scale_factor = max(0.8, min(1.0, scale_factor))  # Limit scaling per step
+                        
+                        s.w_fast *= scale_factor
+                    
+                    if needs_scaling_slow and abs(s.w_slow) > 0.01:
+                        current_scale = abs(s.w_slow) / local_mean_slow
+                        target_scale = self.params.weight_homeostasis_target / local_mean_slow
+                        
+                        scale_factor = 1.0 - self.params.weight_homeostasis_rate * (1.0 - target_scale)
+                        scale_factor = max(0.8, min(1.0, scale_factor))
+                        
+                        s.w_slow *= scale_factor
+        
+        # === STAGE 3: GLOBAL DRIFT CORRECTION ===
+        # If mean weight is systematically positive (drift), apply small correction
+        # This counteracts the LTP > LTD imbalance seen in HF53 (ratio 1.29)
+        
+        drift_correction = self.params.weight_drift_correction
+        
+        # Detect systematic drift direction
+        if abs(mean_w_fast) > 0.1:  # Significant drift detected
+            drift_sign = 1.0 if mean_w_fast > 0 else -1.0
+            for s in self.synapses:
+                if s.integrity > 0:
+                    # Apply small bias opposite to drift direction
+                    s.w_fast -= drift_sign * drift_correction * abs(s.w_fast)
+        
+        if abs(mean_w_slow) > 0.1:
+            drift_sign = 1.0 if mean_w_slow > 0 else -1.0
+            for s in self.synapses:
+                if s.integrity > 0:
+                    s.w_slow -= drift_sign * drift_correction * abs(s.w_slow)
+        
+        # === LOGGING ===
+        logger = get_data_logger()
+        if logger.log_level >= 2 and scaling_events > 0:
+            # Log as homeostatic event (repurposing existing infrastructure)
+            logger.log_homeostatic_event(
+                tick=self.step_count,
+                neuron_id=-1,  # -1 indicates network-wide event
+                old_value=mean_abs_w_fast,
+                new_value=self.params.weight_homeostasis_target,
+                activity=scaling_events / max(1, len(neuron_synapses))
+            )
+
     def _compute_branching_ratio(self):
         """Calculates the branching ratio (sigma): A(t) / A(t-1)."""
         if len(self.activation_history) < 2:
@@ -3244,6 +3396,10 @@ class NeuraxonNetwork:
         for k in ('dopamine', 'serotonin', 'acetylcholine', 'norepinephrine'):
             self.neuromodulators[k] = max(0.0, min(2.0, self.neuromodulators[k] + osc_drive * (0.02 if k == 'dopamine' else 0.01 if k in ('serotonin', 'acetylcholine') else 0.015)))
         self._apply_homeostatic_plasticity()
+        
+        # NEW v2.31: Apply synaptic weight homeostasis after plasticity updates
+        self._apply_synaptic_weight_homeostasis()
+        
         self._apply_structural_plasticity()
         
         if self.step_count % self.params.evolution_interval == 0: self._evolve_itu_circles()
