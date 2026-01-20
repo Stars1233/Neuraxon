@@ -12,9 +12,11 @@
 </div>
 
 <br>
-New Research  2.30 and Lite version 2.0<br>
+New Research  2.31 and Lite version 2.0<br>
 Experience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).<br>
 CHANGE LOG:<br>
+Jan 20th 2026:<br>
+-> v.2.31: Synaptic Weight Homeostasis<br>
 Jan 17th 2026:<br>
 -> v2.29: Global NeuroModulator updates<br>
 -> v.2.30 Energy-Aware Firing Threshold <br>
@@ -340,7 +342,7 @@ The hybrid creates "living neural tissue" that:
 - Exhibits emergent complexity and self-organization
 
 
-## 🎮 Neuraxon Game of Life 2.30
+## 🎮 Neuraxon Game of Life 2.31
 
 **A complete artificial life simulation powered by Neuraxon networks!**
 
@@ -358,9 +360,10 @@ The hybrid creates "living neural tissue" that:
 * 2.27: Serotonin update
 * 2.28: Dopamine Dynamics update
 * 2.29: Global NeuroModulator updates
-* 2.30 Energy-Aware Firing Threshold <br>
+* 2.30: Energy-Aware Firing Threshold
+* 2.31: Synaptic Weight Homeostasis
 
-The **Neuraxon Game of Life 2.30 ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
+The **Neuraxon Game of Life 2.31 ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
 
 ### Features
 
@@ -550,6 +553,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
