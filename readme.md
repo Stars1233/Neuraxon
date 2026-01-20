@@ -17,7 +17,7 @@ Experience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingfac
 CHANGE LOG:<br>
 Jan 20th 2026:<br>
 -> v.2.31: Synaptic Weight Homeostasis<br>
--> v.2.30: Energy-Aware Firing Threshold
+-> v.2.30: Energy-Aware Firing Threshold<br>
 Jan 17th 2026:<br>
 -> v2.29: Global NeuroModulator updates<br>
 -> v.2.30 Energy-Aware Firing Threshold <br>
@@ -554,6 +554,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
