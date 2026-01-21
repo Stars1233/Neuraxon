@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.31 (Research Version): Synaptic Weight Homeostasis  
+# Neuraxon Game of Life v.2.32 (Research Version): Autoreceptor Negative Feedback Fix  
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -11,8 +11,6 @@
 # New features in v2.2501: "metric mismatch" in ITU evolution fitness
 # New features in v2.2502: upgraded branching ratio measurement
 # New features in v2.2503: Excitability rebalancing for criticality (Proposal 1) up to 0.45 
-#   - Lowered firing thresholds, increased spontaneous firing and oscillator strength
-#   - Added adaptive network-wide threshold homeostasis based on excitatory fraction
 # New features in v2.2504: Reduced adaptation rate to 0.02 to reduce the impact of inputs on the network
 # New features in v2.2505: dopamine_low_affinity_threshold Lowered
 # New features in v2.2506: LTP/LTD recording update
@@ -24,6 +22,7 @@
 # New features in v2.29: Global NeuroModulator updates
 # New features in v2.30: Energy-Aware Firing Threshold
 # New features in v2.31: Synaptic Weight Homeostasis
+# New features in v2.32: Autoreceptor Negative Feedback Fix
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -2149,9 +2148,9 @@ class NetworkParameters:
     neuron_death_threshold: float = 0.1 
     
     # --- Neuromodulation (Section 1 & 8) ---
-    dopamine_baseline: float = 0.12
-    dopamine_high_affinity_threshold: float = 0.01 
-    dopamine_low_affinity_threshold: float = 0.5 # Updated from 1.0 for the LTP/LTD mechanism   
+    dopamine_baseline: float = 0.15
+    dopamine_high_affinity_threshold: float = 0.01
+    dopamine_low_affinity_threshold: float = 0.25   
     serotonin_baseline: float = 0.12
     serotonin_high_affinity_threshold: float = 0.01
     serotonin_low_affinity_threshold: float = 1.0
@@ -2161,8 +2160,9 @@ class NetworkParameters:
     norepinephrine_baseline: float = 0.12
     norepinephrine_high_affinity_threshold: float = 0.01
     norepinephrine_low_affinity_threshold: float = 1.0
-    neuromod_decay_rate: float = 0.1 
-    diffusion_rate: float = 0.05 
+    neuromod_decay_rate: float = 0.06
+    diffusion_rate: float = 0.05
+    dopamine_reward_magnitude: float = 0.25 
     
     # --- Oscillators & Synchronization (Section 7) ---
     oscillator_low_freq: float = 0.05  
@@ -2350,10 +2350,11 @@ class Synapse:
         da = neuromodulators.get('dopamine', 0.5)
         ach = neuromodulators.get('acetylcholine', 0.5)
         
-        # FIX v2.02: Swapped thresholds. LTP (da_high) requires High Concentration (Low Affinity Threshold > 1.0).
-        # FIX v2.02: LTD (da_low) requires Low Concentration (High Affinity Threshold > 0.01).
-        # FIX v2.02: Changed da_low 'else 1.0' to 'else 0.0' to prevent always-on depression.
-        da_high = 1.0 if da > self.params.dopamine_low_affinity_threshold else 0.0
+        da_threshold = self.params.dopamine_low_affinity_threshold
+        if da > da_threshold:
+            da_high = min(1.0, (da - da_threshold) / da_threshold)
+        else:
+            da_high = 0.0
         da_low = 1.0 if da > self.params.dopamine_high_affinity_threshold else 0.0
         
         # ACh gain: If high, consolidates learning faster (Paper Claim: Consolidate what has been learned)
@@ -2694,8 +2695,17 @@ class Neuraxon:
         
         # Apply all threshold modulations
         # Note: threshold_energy_mod ADDS to threshold (making firing harder when energy is low)
-        theta_exc = self.firing_threshold_excitatory - threshold_mod - 0.1 * self.autoreceptor + threshold_energy_mod
-        theta_inh = self.firing_threshold_inhibitory - threshold_mod + 0.1 * self.autoreceptor - threshold_energy_mod
+        # 
+        # Use individualized firing thresholds with CORRECTED autoreceptor feedback
+        # 
+        # FIX v2.32: Autoreceptor provides NEGATIVE feedback (D2-like mechanism)
+        # BEFORE: -0.1 * autoreceptor → high activity LOWERED threshold (positive feedback - WRONG)
+        # AFTER:  +0.15 * autoreceptor → high activity RAISES threshold (negative feedback - CORRECT)
+        #
+        # Bioinspired: D2 autoreceptors detect released dopamine and INHIBIT further release
+        # Similarly, our autoreceptor senses activity and should DAMPEN further firing
+        theta_exc = self.firing_threshold_excitatory - threshold_mod + 0.15 * self.autoreceptor + threshold_energy_mod
+        theta_inh = self.firing_threshold_inhibitory - threshold_mod - 0.15 * self.autoreceptor - threshold_energy_mod
         
         if self.membrane_potential > theta_exc: self.trinary_state = TrinaryState.EXCITATORY.value
         elif self.membrane_potential < theta_inh: self.trinary_state = TrinaryState.INHIBITORY.value
@@ -5737,8 +5747,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 # Paper Claim: "strongly by unexpected positive surprise"
                                 # Check if we saw (4) or smelled (5) food in last inputs
                                 expected = (a.last_inputs[4] == 1 or a.last_inputs[5] == 1)
-                                surprise_multiplier = 2.5 if not expected else 1.0
-                                base_reward = 0.15
+                                surprise_multiplier = 2.0 if not expected else 1.0
+                                base_reward = a.net.params.dopamine_reward_magnitude
                                 
                                 a.net.neuromodulators['dopamine'] = min(
                                     2.0,
@@ -5752,7 +5762,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 )
                                 
                                 # Paper Claim: NE activated by proximity to food after a rise in dopamine
-                                if a.net.neuromodulators['dopamine'] > 0.4:
+                                if a.net.neuromodulators['dopamine'] > 0.3:
                                     a.net.neuromodulators['norepinephrine'] = min(2.0, a.net.neuromodulators.get('norepinephrine', 0.12) + 0.1)
                                 
                                 if a.food <= 0 and a.alive:
