@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.32 (Research Version): Autoreceptor Negative Feedback Fix  
+# Neuraxon Game of Life v.2.33 (Research Version): code and performance optimizations
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -23,14 +23,13 @@
 # New features in v2.30: Energy-Aware Firing Threshold
 # New features in v2.31: Synaptic Weight Homeostasis
 # New features in v2.32: Autoreceptor Negative Feedback Fix
+# New features in v2.33: code and performance optimizations
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
 from enum import Enum
 from typing import List, Dict, Tuple, Optional, Set,Any
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
-import multiprocessing as mp
 import numpy as np
 import random
 from copy import deepcopy
@@ -3932,41 +3931,6 @@ class World:
         x, y = p
         return self.grid[y % self.N][x % self.N]
 
-def _net_batch_step_and_outputs(batch_items: List[Tuple[int, dict, Tuple[int, int, int], int, int]]):
-    """
-    This is the target function for the worker processes in the multiprocessing pool.
-    It receives a batch of serialized networks, deserializes them, runs the simulation step,
-    and returns the serialized results. This is the core of the parallel computation.
-    """
-    out = []
-    
-    # Initialize worker logger
-    logger = get_data_logger()
-    
-    for aid, serialized_net, input_states, steps, log_level in batch_items:
-        try:
-            # Ensure worker logger is synced with main process level and clear previous batch data
-            logger.set_level(log_level)
-            logger.clear_events()
-            
-            # Reconstruct the network object from its dictionary representation.
-            net = _rebuild_net_from_dict(serialized_net)
-            # Run the network simulation for the specified number of steps.
-            for _ in range(max(1, steps)):
-                net.set_input_states(list(input_states))
-                net.simulate_step()
-            
-            # Capture events generated during this step
-            events = {k: v[:] for k, v in logger.get_event_lists().items()}
-            
-            # Serialize the results and append to the output list.
-            out.append((aid, net.to_dict(), net.get_output_states(), net.get_energy_status(), events))
-        except Exception as e:
-            # Gracefully handle any errors that occur within a worker process.
-            print(f"Worker error: {e}")
-            out.append((aid, serialized_net, [0, 0, 0, 0], {}, {}))
-    return out
-
 class Renderer:
     """Handles all Pygame-based rendering and user input for the main simulation window."""
     def __init__(self, world: World, textures: Dict[str, Optional[str]], textures_alpha: float):
@@ -4705,10 +4669,6 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         nxers[a.id] = a
         occupied.add(a.pos)
         
-    cpu = os.cpu_count() or 4
-    nx_workers = max(1, min(15, cpu - 2))
-    ctx = mp.get_context("spawn")
-    nx_pool = ProcessPoolExecutor(max_workers=nx_workers, mp_context=ctx)
     
     # CHANGE in V2.0: Start unpaused if auto_start is True
     running = True
@@ -5431,8 +5391,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         a.mating_with = None; a.mating_end_tick = None
                         a.mate_cooldown_until_tick = max(a.mate_cooldown_until_tick, step_tick + mate_cooldown_ticks)
 
-                # --- B. Gather and Execute Network Updates in Parallel ---
-                jobs = {}
+                # --- B. Gather and Execute Network Updates (Sequential Optimization) ---
                 occupant_at = {a.pos: a.id for a in nxers.values() if a.alive}
                 food_at = {f.pos: 1 for f in foods.values() if f.alive}
 
@@ -5554,63 +5513,52 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         # [DOPAMINE UPDATE] Store current food for next tick's disappointment check
                         a._prev_food = a.food
                         
-                        netdict = a.net.to_dict()
+                        # Apply Metabolic Ramp directly to the live object
                         idle_seconds = max(0.0, (step_tick - a.last_move_tick) / GlobalTimeSteps)
-                        netdict['parameters']['metabolic_rate'] *= (1.0 + METABOLIC_RAMP_PER_SEC * idle_seconds)
+                        a.net.params.metabolic_rate *= (1.0 + METABOLIC_RAMP_PER_SEC * idle_seconds)
+                        
                         if a.dopamine_boost_ticks > 0:
-                            nd = netdict['neuromodulators']
+                            nd = a.net.neuromodulators
                             nd['dopamine'] = max(nd.get('dopamine', 0.12), 0.9); nd['serotonin'] = max(nd.get('serotonin', 0.12), 0.6)
                             a.dopamine_boost_ticks -= 1
-                        # Pass log_level to worker
-                        jobs[a.id] = (netdict, a.last_inputs, max(1, a.net.params.simulation_steps // GlobalTimeSteps), data_logger.log_level)
-                
-                results: Dict[int, Tuple[dict, List[int], dict, dict]] = {}
-                if jobs:
-                    items = [(aid, nd, ins, st, lvl) for aid, (nd, ins, st, lvl) in jobs.items()]
-                    num_jobs = len(items); target_batches = max(1, nx_workers * 2); chunk = max(1, (num_jobs + target_batches - 1) // target_batches)
-                    futures = []
-                    for batch in _chunked(items, chunk): futures.append(nx_pool.submit(_net_batch_step_and_outputs, batch))
-                    for fut in as_completed(futures):
-                        try:
-                            for aid, net_dict, outs, energy_status, worker_events in fut.result(): 
-                                results[aid] = (net_dict, outs, energy_status, worker_events)
-                        except Exception as e: print(f"Error in worker future: {e}")
-
-                # --- C. Apply Network Outputs ---
-                for aid, (net_dict, outs, energy_status, worker_events) in results.items():
-                    # Merge worker events into main logger
-                    if worker_events:
-                        data_logger.merge_events(worker_events)
                         
-                    a = nxers.get(aid)
-                    if not a or not a.alive: continue
-                    a.net = _rebuild_net_from_dict(net_dict)
-                    if energy_status:
-                        a.stats.energy_efficiency = energy_status.get('efficiency', a.stats.energy_efficiency)                        
-                        a.stats.temporal_sync_score = energy_status.get('temporal_sync', a.stats.temporal_sync_score)
-                        normalized_food = min(a.stats.food_found / 100.0, 1.0)
-                        normalized_explored = min(a.stats.explored / 1000.0, 1.0)
-                        normalized_time = min(a.stats.time_lived_s / 1000.0, 1.0)
-                        normalized_energy = min(a.stats.energy_efficiency / 10.0, 1.0) if a.stats.energy_efficiency else 0.0
-                        normalized_sync = min(a.stats.temporal_sync_score / 2.0, 1.0)
-                        a.stats.fitness_score = normalized_food * 0.3 + normalized_explored * 0.2 + normalized_time * 0.2 + normalized_energy * 0.15 + normalized_sync * 0.15
-                        if energy_status.get('efficiency', 0) > 0.5:
-                            data_logger.log_plasticity_event(step_tick, 'activity', -1, a.id, energy_status.get('efficiency', 0))
-                    
-                    o = (outs + [0, 0, 0, 0, 0])[:5]
-                    a.last_outputs = tuple(o)
-                    data_logger.log_io_pattern(step_tick, a.id, a.last_inputs, tuple(a.last_outputs))
-                    O1, O2, O3, O4, O5 = o
-                    #GOD MODE DISABLED for moving to avoid zombies v2.23
-                    #if O1 == 0 and O2 == 0 and random.random() < 0.4:
-                     #   if random.random() < 0.5: O1 = random.choice([-1, 1])
-                        #else: O2 = random.choice([-1, 1])
-                    #GOD MODE DISABLED for mating v2.23
-                    #if O4 == 0 and random.random() < 0.08: O4 = random.choice([-1, 1])
-                    
-                    dx = -O1; dy = -O2
-                    a.heading = get_heading_from_move(dx, dy, a.heading)
-                    a._pending_move = (dx, dy, O3, O4, O5)
+                        # --- SIMULATION EXECUTION (Directly on object) ---
+                        steps_to_sim = max(1, a.net.params.simulation_steps // GlobalTimeSteps)
+                        for _ in range(steps_to_sim):
+                            a.net.set_input_states(list(a.last_inputs))
+                            a.net.simulate_step()
+                        
+                        # Capture results directly
+                        outs = a.net.get_output_states()
+                        energy_status = a.net.get_energy_status()
+
+                        # --- C. Apply Network Outputs ---
+                        if energy_status:
+                            a.stats.energy_efficiency = energy_status.get('efficiency', a.stats.energy_efficiency)                        
+                            a.stats.temporal_sync_score = energy_status.get('temporal_sync', a.stats.temporal_sync_score)
+                            normalized_food = min(a.stats.food_found / 100.0, 1.0)
+                            normalized_explored = min(a.stats.explored / 1000.0, 1.0)
+                            normalized_time = min(a.stats.time_lived_s / 1000.0, 1.0)
+                            normalized_energy = min(a.stats.energy_efficiency / 10.0, 1.0) if a.stats.energy_efficiency else 0.0
+                            normalized_sync = min(a.stats.temporal_sync_score / 2.0, 1.0)
+                            a.stats.fitness_score = normalized_food * 0.3 + normalized_explored * 0.2 + normalized_time * 0.2 + normalized_energy * 0.15 + normalized_sync * 0.15
+                            if energy_status.get('efficiency', 0) > 0.5:
+                                data_logger.log_plasticity_event(step_tick, 'activity', -1, a.id, energy_status.get('efficiency', 0))
+                        
+                        o = (outs + [0, 0, 0, 0, 0])[:5]
+                        a.last_outputs = tuple(o)
+                        data_logger.log_io_pattern(step_tick, a.id, a.last_inputs, tuple(a.last_outputs))
+                        O1, O2, O3, O4, O5 = o
+                        #GOD MODE DISABLED for moving to avoid zombies v2.23
+                        #if O1 == 0 and O2 == 0 and random.random() < 0.4:
+                         #   if random.random() < 0.5: O1 = random.choice([-1, 1])
+                            #else: O2 = random.choice([-1, 1])
+                        #GOD MODE DISABLED for mating v2.23
+                        #if O4 == 0 and random.random() < 0.08: O4 = random.choice([-1, 1])
+                        
+                        dx = -O1; dy = -O2
+                        a.heading = get_heading_from_move(dx, dy, a.heading)
+                        a._pending_move = (dx, dy, O3, O4, O5)
 
                 # --- D. Resolve Agent Interactions ---
                 intents = []; move_target = {}
@@ -5925,8 +5873,6 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         import traceback; traceback.print_exc()
         return {"error": str(ex), "status": "crashed"}
     finally:
-        try: nx_pool.shutdown(wait=False, cancel_futures=True)
-        except: pass
         pygame.quit()
 
 def run_config_screen() -> Optional[Dict[str, any]]:
@@ -6112,8 +6058,6 @@ def TestMode(games_count: int = 2, max_minutes: int = 1):
     print("--- TEST MODE COMPLETE ---")
 
 if __name__ == "__main__":
-    # This is required for multiprocessing to work correctly when the script is packaged into an executable.
-    mp.freeze_support()
     # First, show the configuration screen to the user.
     config_params = run_config_screen()
     # If the user confirmed the settings start the main simulation.
