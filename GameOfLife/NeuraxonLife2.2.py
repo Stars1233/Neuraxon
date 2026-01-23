@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.35 (Research Version): Properly caps intrinsic timescale
+# Neuraxon Game of Life v.2.36 (Research Version): Bioinspired trinary state rebalancing
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -26,6 +26,7 @@
 # New features in v2.33: code and performance optimizations
 # New features in v2.34: Inherit Synaptic Weights update
 # New features in v2.35: Properly caps intrinsic timescale
+# New features in v2.36: Bioinspired Trinary State Rebalancing
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -2123,15 +2124,18 @@ class NetworkParameters:
     
     # --- Core Neuron Properties (Neuraxon) ---
     membrane_time_constant: float = 20.0 
-    firing_threshold_excitatory: float = 0.45  # CHANGED: Lowered from 0.9 (28% reduction) to increase excitatory fraction
-    firing_threshold_inhibitory: float = -0.45  # CHANGED: Lowered from -0.9 to maintain symmetry
-    adaptation_rate: float = 0.02  # Changed from 0.05 to 0.02 to reduce adaptation speed so inputs accumulate more before dampening
-    spontaneous_firing_rate: float = 0.035  # CHANGED: Increased from 0.02 to drive more baseline activity
+    firing_threshold_excitatory: float = 0.70  # v2.36: Raised from 0.45 - requires stronger stimulation for excitation
+    firing_threshold_inhibitory: float = -0.70  # v2.36: Raised from -0.45 - symmetry maintained
+    adaptation_rate: float = 0.08  # v2.36: Raised from 0.02 - stronger spike-frequency adaptation
+    spontaneous_firing_rate: float = 0.012  # v2.36: Reduced from 0.035 - biological neurons fire 1-5Hz baseline
     neuron_health_decay: float = 0.001 
+    
+    # --- Membrane Potential Dynamics (NEW v2.36) ---
+    resting_potential_decay: float = 0.12  # Rate at which membrane potential decays toward zero (resting) 
     
     # --- Dendritic Branch Properties ---
     num_dendritic_branches: int = 3 
-    branch_threshold: float = 0.6 
+    branch_threshold: float = 0.72  # v2.36: Raised - dendritic spikes require more accumulated input 
     plateau_decay: float = 500.0 
 
     # --- Synaptic Properties & Plasticity (Section 3) ---
@@ -2183,7 +2187,7 @@ class NetworkParameters:
     oscillator_low_freq: float = 0.05  
     oscillator_mid_freq: float = 0.5   
     oscillator_high_freq: float = 4.0  
-    oscillator_strength: float = 0.25  # CHANGED: Increased from 0.15 to provide stronger baseline drive 
+    oscillator_strength: float = 0.10  # v2.36: Reduced from 0.25 - less tonic drive, more stimulus-dependent 
     
     # --- Energy Metabolism ---
     energy_baseline: float = 100.0 
@@ -2219,13 +2223,16 @@ class NetworkParameters:
     target_firing_rate: float = 0.1 
     homeostatic_plasticity_rate: float = 0.001 
     
-    # --- Adaptive Network-Wide Threshold Homeostasis (NEW in v2.2503) ---
-    # Bioinspired: Mimics homeostatic scaling in biological neurons to maintain criticality
-    adaptive_threshold_enabled: bool = True  # Enable network-wide adaptive threshold adjustment
-    adaptive_threshold_check_interval: int = 20  # Check more frequently (was 50)
-    adaptive_threshold_adjustment: float = 0.025  # Stronger base adjustment (was 0.015)
-    min_excitatory_fraction: float = 0.12  # Slightly lower floor 
-    max_excitatory_fraction: float = 0.45  # Allow higher ceiling for criticality
+    # --- Adaptive Network-Wide Threshold Homeostasis (REBALANCED v2.36) ---
+    # BIOINSPIRED: Cortical neurons maintain ~20-25% average firing rate for optimal information
+    # processing. The neutral state is the computational "buffer" where integration occurs.
+    adaptive_threshold_enabled: bool = True
+    adaptive_threshold_check_interval: int = 12  # v2.36: More frequent checks
+    adaptive_threshold_adjustment: float = 0.04  # v2.36: Stronger correction  
+    min_excitatory_fraction: float = 0.15  # v2.36: Floor for maintaining some activity
+    max_excitatory_fraction: float = 0.30  # v2.36: Ceiling - neutral should dominate above this
+    target_excitatory_fraction: float = 0.22  # v2.36: NEW - optimal target for criticality
+    target_inhibitory_fraction: float = 0.10  # v2.36: NEW - ensures inhibitory presence
     
     # --- Aigarth Hybridization (Section 8) ---
     itu_circle_radius: int = 8 
@@ -2239,12 +2246,12 @@ class NetworkParameters:
     max_axonal_delay: float = 10.0
     
     # --- Sensory-Motor Coupling (NEW in v2.35) ---
-    sensory_input_gain: float = 1.5  # Reduced from 2.5 to prevent over-excitation
-    afferent_synapse_strength: float = 1.5  # Reduced from 1.8
+    sensory_input_gain: float = 0.9  # v2.36: Reduced - sensory shouldn't overwhelm network
+    afferent_synapse_strength: float = 1.1  # v2.36: Reduced from 1.5
     afferent_synapse_reliability: float = 0.95
     sensory_gating_enabled: bool = True
-    sensory_gating_threshold: float = 0.3
-    sensory_gating_suppression: float = 0.15  # Increased from 0.1 (less suppression)
+    sensory_gating_threshold: float = 0.45  # v2.36: Raised - stronger gating
+    sensory_gating_suppression: float = 0.25  # v2.36: Stronger suppression during driven input
     max_intrinsic_timescale: float = 80.0  # Reduced from 100 for stricter bound
     spontaneous_as_current: bool = True
     spontaneous_current_magnitude: float = 1.2  # Reduced from 1.5
@@ -2593,9 +2600,11 @@ class Neuraxon:
 
         # Core state variables
         #self.membrane_potential = 0.0
+        # v2.36: Start neurons closer to resting potential (zero) - biologically neurons
+        # spend most time near resting potential, not near threshold
         self.membrane_potential = random.uniform(
-            self.firing_threshold_inhibitory * 0.8, #FIX v2.23 to improve biological parameters previously set to 0.0
-            self.firing_threshold_excitatory * 0.8 #FIX v2.23 to improve biological parameters previously set to 0.0
+            self.firing_threshold_inhibitory * 0.35,  # v2.36: Narrower range, closer to zero
+            self.firing_threshold_excitatory * 0.35
         )
 
         self.trinary_state = TrinaryState.NEUTRAL.value
@@ -2740,13 +2749,24 @@ class Neuraxon:
         tau_eff = max(1.0, self.intrinsic_timescale)
         prev_state = self.trinary_state
         
+        # v2.36: BIOINSPIRED - Membrane potential decay toward resting potential
+        # Real neurons have leak currents (K+ channels) that pull membrane potential back to rest
+        # This creates the neutral state dominance seen in biological recordings
+        if hasattr(self.params, 'resting_potential_decay'):
+            resting_decay = self.params.resting_potential_decay * dt
+            self.membrane_potential *= (1.0 - resting_decay)
+        
         # Store previous potential for subthreshold logging
         prev_potential = self.membrane_potential
         
         # Use individualized adaptation_rate indirectly via adaptation variable dynamics
         self.membrane_potential += dt / tau_eff * (-self.membrane_potential + drive - self.adaptation)
         
-        self.adaptation += dt / 100.0 * (-self.adaptation + 0.1 * abs(self.trinary_state))
+        # v2.36: BIOINSPIRED - Stronger spike-frequency adaptation
+        # Real neurons show strong adaptation after firing, reducing subsequent excitability
+        # This creates refractory-like periods that increase neutral state time
+        adaptation_target = 0.25 * abs(self.trinary_state) + 0.08 * (1 if self.trinary_state != 0 else 0)
+        self.adaptation += dt / 40.0 * (-self.adaptation + adaptation_target)
         self.autoreceptor += dt / 200.0 * (-self.autoreceptor + 0.2 * self.trinary_state)
         
         # NEW v2.30: Energy-Aware Firing Threshold
@@ -2773,12 +2793,22 @@ class Neuraxon:
         #
         # Bioinspired: D2 autoreceptors detect released dopamine and INHIBIT further release
         # Similarly, our autoreceptor senses activity and should DAMPEN further firing
-        theta_exc = self.firing_threshold_excitatory - threshold_mod + 0.15 * self.autoreceptor + threshold_energy_mod
-        theta_inh = self.firing_threshold_inhibitory - threshold_mod - 0.15 * self.autoreceptor - threshold_energy_mod
+        # v2.36: Increased autoreceptor effect for stronger negative feedback
+        autoreceptor_effect = 0.22 * self.autoreceptor
+        theta_exc = self.firing_threshold_excitatory - threshold_mod + autoreceptor_effect + threshold_energy_mod
+        theta_inh = self.firing_threshold_inhibitory - threshold_mod - autoreceptor_effect - threshold_energy_mod
         
-        if self.membrane_potential > theta_exc: self.trinary_state = TrinaryState.EXCITATORY.value
-        elif self.membrane_potential < theta_inh: self.trinary_state = TrinaryState.INHIBITORY.value
-        else: self.trinary_state = TrinaryState.NEUTRAL.value
+        # v2.36: BIOINSPIRED - Hysteresis in state transitions
+        # Once in neutral state, require slightly more depolarization to exit
+        # This creates "stickiness" of the neutral state, as seen in real neurons
+        hysteresis = 0.025 if self.trinary_state == 0 else 0.0
+        
+        if self.membrane_potential > (theta_exc + hysteresis): 
+            self.trinary_state = TrinaryState.EXCITATORY.value
+        elif self.membrane_potential < (theta_inh - hysteresis): 
+            self.trinary_state = TrinaryState.INHIBITORY.value
+        else: 
+            self.trinary_state = TrinaryState.NEUTRAL.value
         
         self.state_history.append(self.trinary_state)
         self._update_autocorrelation()
@@ -3208,48 +3238,72 @@ class NeuraxonNetwork:
         # === PRIMARY TARGET: Branching Ratio (Criticality) ===
         sigma = self.branching_ratio
         
-        # Critical regime: σ ∈ [0.85, 1.15] - no adjustment needed
-        # This is the "edge of chaos" where information processing is optimal
-        if 0.85 <= sigma <= 1.15:
-            return
-        
-        # Proportional control: adjustment scales with distance from criticality
-        # This mimics biological homeostasis where larger deviations cause stronger responses
-        sigma_error = 1.0 - sigma
-        
-        # Base adjustment magnitude, scaled by error (max 2x base)
-        base_adjustment = self.params.adaptive_threshold_adjustment
-        proportional_gain = min(2.0, 1.0 + abs(sigma_error))
-        adjustment_magnitude = base_adjustment * proportional_gain
-        
-        # === ALSO CHECK: Excitatory Fraction as Secondary Signal ===
+        # v2.36: Also check excitatory fraction to ensure neutral dominance
         excitatory_count = sum(1 for n in active_neurons if n.trinary_state == 1)
         excitatory_fraction = excitatory_count / len(active_neurons)
-        self.excitatory_fraction_history.append(excitatory_fraction)
         
-        # Determine adjustment direction
+        # Critical regime for branching ratio: σ ∈ [0.85, 1.15]
+        sigma_ok = 0.85 <= sigma <= 1.15
+        
+        # v2.36: NEW - Also target appropriate excitatory fraction for neutral dominance
+        target_exc = getattr(self.params, 'target_excitatory_fraction', 0.22)
+        exc_ok = abs(excitatory_fraction - target_exc) < 0.08
+        
+        # Only skip adjustment if BOTH criticality AND excitatory fraction are good
+        if sigma_ok and exc_ok:
+            return
+        
+        # v2.36: Prioritize excitatory fraction correction when sigma is acceptable
+        # This ensures neutral state dominance even at criticality
         adjustment = 0.0
         reason = None
         
-        if sigma < 0.85:  # Subcritical - network too quiet
-            # Lower thresholds to increase excitability (biological: upregulate Na+ channels)
-            adjustment = -adjustment_magnitude
-            reason = f"subcritical_sigma_{sigma:.3f}_exc_{excitatory_fraction:.3f}"
+        if sigma_ok and not exc_ok:
+            # Sigma is good but excitatory fraction needs correction
+            if excitatory_fraction > self.params.max_excitatory_fraction:
+                # Too much excitatory - raise thresholds even though sigma is OK
+                adjustment = self.params.adaptive_threshold_adjustment * 1.5
+                reason = f"excess_excitatory_{excitatory_fraction:.3f}_target_{target_exc:.3f}"
+            elif excitatory_fraction < self.params.min_excitatory_fraction:
+                # Too little excitatory - lower thresholds
+                adjustment = -self.params.adaptive_threshold_adjustment
+                reason = f"deficit_excitatory_{excitatory_fraction:.3f}_target_{target_exc:.3f}"
+            else:
+                return
+        else:
+            # Original criticality-based adjustment continues below...
+            # Proportional control: adjustment scales with distance from criticality
+            # This mimics biological homeostasis where larger deviations cause stronger responses
+            sigma_error = 1.0 - sigma
             
-            # Secondary boost: increase oscillator drive if very subcritical
-            if sigma < 0.7:
-                self.params.oscillator_strength = min(0.40, 
-                    self.params.oscillator_strength + 0.005)
-        
-        elif sigma > 1.15:  # Supercritical - network too active
-            # Raise thresholds to decrease excitability (biological: upregulate K+ channels)
-            adjustment = adjustment_magnitude
-            reason = f"supercritical_sigma_{sigma:.3f}_exc_{excitatory_fraction:.3f}"
+            # Base adjustment magnitude, scaled by error (max 2x base)
+            base_adjustment = self.params.adaptive_threshold_adjustment
+            proportional_gain = min(2.0, 1.0 + abs(sigma_error))
+            adjustment_magnitude = base_adjustment * proportional_gain
             
-            # Secondary damping: reduce oscillator drive if very supercritical
-            if sigma > 1.3:
-                self.params.oscillator_strength = max(0.10,
-                    self.params.oscillator_strength - 0.005)
+            # === ALSO CHECK: Excitatory Fraction as Secondary Signal ===
+            self.excitatory_fraction_history.append(excitatory_fraction)
+            
+            # Determine adjustment direction based on sigma
+            if sigma < 0.85:  # Subcritical - network too quiet
+                # Lower thresholds to increase excitability (biological: upregulate Na+ channels)
+                adjustment = -adjustment_magnitude
+                reason = f"subcritical_sigma_{sigma:.3f}_exc_{excitatory_fraction:.3f}"
+                
+                # Secondary boost: increase oscillator drive if very subcritical
+                if sigma < 0.7:
+                    self.params.oscillator_strength = min(0.40, 
+                        self.params.oscillator_strength + 0.005)
+            
+            elif sigma > 1.15:  # Supercritical - network too active
+                # Raise thresholds to decrease excitability (biological: upregulate K+ channels)
+                adjustment = adjustment_magnitude
+                reason = f"supercritical_sigma_{sigma:.3f}_exc_{excitatory_fraction:.3f}"
+                
+                # Secondary damping: reduce oscillator drive if very supercritical
+                if sigma > 1.3:
+                    self.params.oscillator_strength = max(0.10,
+                        self.params.oscillator_strength - 0.005)
         
         # === APPLY GLOBAL THRESHOLD ADJUSTMENT ===
         if adjustment != 0.0:
