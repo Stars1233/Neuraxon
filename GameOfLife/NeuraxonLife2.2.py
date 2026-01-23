@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.34 (Research Version): Inherit Synaptic Weights update
+# Neuraxon Game of Life v.2.35 (Research Version): Properly caps intrinsic timescale
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -25,6 +25,7 @@
 # New features in v2.32: Autoreceptor Negative Feedback Fix
 # New features in v2.33: code and performance optimizations
 # New features in v2.34: Inherit Synaptic Weights update
+# New features in v2.35: Properly caps intrinsic timescale
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -2236,6 +2237,22 @@ class NetworkParameters:
     # --- Miscellaneous ---
     phase_coupling_strength: float = 0.1 
     max_axonal_delay: float = 10.0
+    
+    # --- Sensory-Motor Coupling (NEW in v2.35) ---
+    sensory_input_gain: float = 1.5  # Reduced from 2.5 to prevent over-excitation
+    afferent_synapse_strength: float = 1.5  # Reduced from 1.8
+    afferent_synapse_reliability: float = 0.95
+    sensory_gating_enabled: bool = True
+    sensory_gating_threshold: float = 0.3
+    sensory_gating_suppression: float = 0.15  # Increased from 0.1 (less suppression)
+    max_intrinsic_timescale: float = 80.0  # Reduced from 100 for stricter bound
+    spontaneous_as_current: bool = True
+    spontaneous_current_magnitude: float = 1.2  # Reduced from 1.5
+    
+    # --- Spike Classification Thresholds (NEW in v2.35) ---
+    # Used to determine if a spike was driven vs spontaneous
+    driven_input_threshold: float = 0.2  # Min synaptic+external input to count as "driven"
+    spike_classification_enabled: bool = True
 
 # Defines the core types within the model, aligning with the paper's terminology.
 class NeuronType(Enum): INPUT = "input"; HIDDEN = "hidden"; OUTPUT = "output"
@@ -2309,6 +2326,7 @@ class Synapse:
     def __init__(self, pre_id: int, post_id: int, params: NetworkParameters):
         self.pre_id = pre_id
         self.post_id = post_id
+        self.is_afferent = False
         self.params = params
         
         self.w_fast = random.uniform(params.w_fast_init_min, params.w_fast_init_max)
@@ -2344,6 +2362,13 @@ class Synapse:
         self._prev_w_slow = self.w_slow
         self._prev_w_meta = self.w_meta
     
+    def mark_as_afferent(self):
+        """Mark as afferent synapse and strengthen."""
+        self.is_afferent = True
+        self.w_fast *= self.params.afferent_synapse_strength
+        self.w_slow *= self.params.afferent_synapse_strength
+        self.is_silent = random.random() > self.params.afferent_synapse_reliability
+    
     def _determine_type(self) -> SynapseType:
         if self.is_silent: return SynapseType.SILENT
         if self.is_modulatory: return SynapseType.METABOTROPIC
@@ -2352,6 +2377,8 @@ class Synapse:
     def compute_input(self, pre_state: int, current_time: float) -> Tuple[float, float]:
         if self.is_silent: return 0.0, 0.0
         delay_factor = max(0.0, 1.0 - self.axonal_delay / 10.0)
+        if self.is_afferent:
+            delay_factor = max(0.5, delay_factor)
         w = self.w_fast + self.w_slow
         return w * pre_state * delay_factor, w * pre_state * (1.0 - delay_factor)
     
@@ -2631,6 +2658,13 @@ class Neuraxon:
             self.health -= self.neuron_health_decay * dt * 2.0
             self.membrane_potential *= 0.9
     
+    def _update_intrinsic_timescale(self, dt: float):
+        """Update intrinsic timescale based on autocorrelation."""
+        # This method is called early in update() to prepare for timescale updates
+        # The actual autocorrelation-based update happens in _update_autocorrelation()
+        # after state_history is updated
+        pass
+    
     def _update_autocorrelation(self):
         if len(self.state_history) >= 10:
             states = list(self.state_history)
@@ -2646,13 +2680,23 @@ class Neuraxon:
                     # Higher autocorr = longer memory window
                     acw = self.intrinsic_timescale * (1.0 + abs(autocorr))
                     self.intrinsic_timescale = acw
+                    # Cap after autocorrelation update
+                    self.intrinsic_timescale = min(self.intrinsic_timescale, self.params.max_intrinsic_timescale)
             except:
                 pass
     
     def update(self, synaptic_inputs: List[float], modulatory_inputs: List[float], external_input: float, neuromodulators: Dict[str, float], dt: float, global_osc: float):
         if not self.is_active or self.energy_level <= 0: return
 
-        self._update_phase_oscillator(dt, global_osc)
+        phase_coupling_strength = self.params.phase_coupling_strength
+        
+        self._update_intrinsic_timescale(dt)
+        
+        # CRITICAL FIX: Cap intrinsic timescale AFTER update, not before
+        # This ensures the cap is always enforced regardless of ACW calculation
+        self.intrinsic_timescale = min(self.intrinsic_timescale, self.params.max_intrinsic_timescale)
+        
+        self.phase += dt * self.natural_frequency * 2 * math.pi + phase_coupling_strength * math.sin(global_osc - self.phase)
         
         total_synaptic, branch_outputs = self._nonlinear_dendritic_integration(synaptic_inputs, modulatory_inputs, dt)
         
@@ -2663,20 +2707,31 @@ class Neuraxon:
         # High ACh suppresses noise (spontaneous firing), focusing the neuron on inputs/memory
         noise_suppression = 0.4 if acetylcholine > 0.6 else 1.0
         
-        # Use individualized spontaneous_rate
-        # Track if firing is spontaneous
-        spont_prob = self.spontaneous_firing_rate * dt * (1.0 + math.cos(self.phase) * 0.3) * noise_suppression
+        # Calculate total input strength for classification and gating
+        total_input_strength = abs(total_synaptic) + abs(external_input)
+        has_strong_input = total_input_strength > self.params.sensory_gating_threshold
+        
+        # Spontaneous probability with sensory gating
+        base_spont_prob = self.spontaneous_firing_rate * dt * (1.0 + math.cos(self.phase) * 0.3) * noise_suppression
+        if self.params.sensory_gating_enabled and has_strong_input:
+            spont_prob = base_spont_prob * self.params.sensory_gating_suppression
+        else:
+            spont_prob = base_spont_prob
+        
         is_spontaneous_firing = False
         spontaneous = 0.0
 
         if random.random() < spont_prob:
             is_spontaneous_firing = True
-            # FORCE A SPIKE: Set potential directly to threshold new v2.23
-            if random.random() < 0.5:
-                self.membrane_potential = self.firing_threshold_excitatory + 0.01
+            if self.params.spontaneous_as_current:
+                # Inject current (allows competition)
+                spontaneous = random.choice([-1.0, 1.0]) * self.params.spontaneous_current_magnitude
             else:
-                # Or force a random strong current (Old method, kept for variety)
-                spontaneous = random.choice([-1.0, 1.0]) * 2.0
+                # Legacy: force threshold
+                if random.random() < 0.5:
+                    self.membrane_potential = self.firing_threshold_excitatory + 0.01
+                else:
+                    spontaneous = random.choice([-1.0, 1.0]) * 2.0
                 
         threshold_mod = (acetylcholine - 0.5) * 0.5 + sum(modulatory_inputs) * 0.3
         gain = 1.0 + (norepi - 0.5) * 0.4
@@ -2729,11 +2784,36 @@ class Neuraxon:
         self._update_autocorrelation()
         activity_level = abs(self.trinary_state)
         
-        # NEW: Log spontaneous event if state changed due to spontaneous input
-        if is_spontaneous_firing and abs(self.trinary_state) > 0:
-            logger = get_data_logger()
+        # === SPIKE CLASSIFICATION AND LOGGING ===
+        # Determine if spike was driven (by input) or spontaneous
+        logger = get_data_logger()
+        if abs(self.trinary_state) > 0 and self.params.spike_classification_enabled:
+            # Calculate relative contributions
+            input_contribution = abs(total_synaptic) + abs(external_input)
+            spont_contribution = abs(spontaneous)
+            
+            # Classify based on dominant source
+            # A spike is "driven" if input contribution exceeds threshold AND exceeds spontaneous
+            is_driven = (input_contribution > self.params.driven_input_threshold and 
+                        input_contribution > spont_contribution)
+            
             if logger.log_level >= 2:
-                logger.log_spontaneous_event(0, self.id, self.membrane_potential)
+                if is_driven:
+                    # Log as driven event
+                    if hasattr(logger, 'log_driven_event'):
+                        logger.log_driven_event(0, self.id, self.membrane_potential, input_contribution)
+                    else:
+                        # Fallback: use time_series dict
+                        if not hasattr(logger, 'time_series'):
+                            logger.time_series = {}
+                        logger.time_series.setdefault('driven_events', []).append({
+                            'tick': 0, 'neuron_id': self.id, 
+                            'potential': self.membrane_potential,
+                            'input_strength': input_contribution
+                        })
+                elif is_spontaneous_firing:
+                    # Log as spontaneous
+                    logger.log_spontaneous_event(0, self.id, self.membrane_potential)
         
         # NEW: Log subthreshold integration events Updated Save states in v 2.1
         logger = get_data_logger()
@@ -2996,6 +3076,8 @@ class NeuraxonNetwork:
                 if pre.id == post.id or (pre.type == NeuronType.OUTPUT and post.type == NeuronType.INPUT) or (pre.id, post.id) in existing: continue
                 syn = Synapse(pre.id, post.id, self.params)
                 self.synapses.append(syn)
+                if pre.type == NeuronType.INPUT:
+                    syn.mark_as_afferent()
                 existing.add((pre.id, post.id))
                 neuron_degrees[pre.id] += 1
                 neuron_degrees[post.id] += 1
@@ -3007,6 +3089,8 @@ class NeuraxonNetwork:
                 if random.random() < self.params.connection_probability * 0.25:
                     syn = Synapse(pre.id, post.id, self.params)
                     self.synapses.append(syn)
+                    if pre.type == NeuronType.INPUT:
+                        syn.mark_as_afferent()
                     existing.add((pre.id, post.id))
                     neuron_degrees[pre.id] += 1
                     neuron_degrees[post.id] += 1
@@ -3353,9 +3437,23 @@ class NeuraxonNetwork:
         
         return self.branching_ratio
     
+    def _get_sensory_input_dict(self) -> Dict[int, float]:
+        """Generate external inputs from clamped input neuron states."""
+        external_inputs = {}
+        for inp_neuron in self.input_neurons:
+            if inp_neuron.is_active and inp_neuron.trinary_state != 0:
+                input_signal = inp_neuron.trinary_state * self.params.sensory_input_gain
+                for syn in self.synapses:
+                    if syn.pre_id == inp_neuron.id and syn.is_afferent:
+                        external_inputs[syn.post_id] = external_inputs.get(syn.post_id, 0.0) + input_signal
+        return external_inputs
+    
     def simulate_step(self, external_inputs: Optional[Dict[int, float]] = None):
         """Executes one full, orchestrated simulation step for the entire network."""
+        sensory_inputs = self._get_sensory_input_dict()
         external_inputs = external_inputs or {}
+        for nid, val in sensory_inputs.items():
+            external_inputs[nid] = external_inputs.get(nid, 0.0) + val
         
         dt = max(self.params.min_dt, min(self.params.max_dt, self.params.dt / (1.0 + np.var(list(self.activation_history)[-10:]) if len(self.activation_history) > 10 else self.params.dt)))
         
