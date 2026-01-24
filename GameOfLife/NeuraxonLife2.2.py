@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.2.36 (Research Version): Bioinspired trinary state rebalancing
+# Neuraxon Game of Life v.2.37 (Research Version): E/I Balance Fix
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -27,6 +27,7 @@
 # New features in v2.34: Inherit Synaptic Weights update
 # New features in v2.35: Properly caps intrinsic timescale
 # New features in v2.36: Bioinspired Trinary State Rebalancing
+# New features in v2.37: E/I Balance Fix
 
 import os, sys, time, json, math, random, pathlib
 from dataclasses import dataclass, asdict, field
@@ -1349,8 +1350,18 @@ class DataLogger:
         self.nxer_summary['max_time_lived'] = max(self.nxer_summary['max_time_lived'], nxer.stats.time_lived_s)
         self.nxer_summary['max_mates'] = max(self.nxer_summary['max_mates'], nxer.stats.mates_performed)
         self.nxer_summary['max_explored'] = max(self.nxer_summary['max_explored'], nxer.stats.explored)
-    
+       
     def to_dict(self) -> dict:
+        def sanitize(obj):
+            if isinstance(obj, float):
+                if math.isnan(obj) or math.isinf(obj):
+                    return 0.0  # Replace NaN/Inf with 0.0
+                return obj
+            elif isinstance(obj, list):
+                return [sanitize(x) for x in obj]
+            elif isinstance(obj, dict):
+                return {k: sanitize(v) for k, v in obj.items()}
+            return obj
         """Serialize all logged data to a dictionary with compression."""
         self.game_metadata['end_timestamp'] = datetime.now().isoformat()
         self.game_metadata['duration_seconds'] = time.time() - self.start_time
@@ -1395,8 +1406,8 @@ class DataLogger:
                     optimized_nxer_series[nxer_id] = optimized_series
 
             data['level2'] = {                
-                'time_series': self.time_series,
-                'per_nxer_time_series': optimized_nxer_series,
+                'time_series':sanitize(self.time_series),
+                'per_nxer_time_series': sanitize(optimized_nxer_series),
                 
                 'plasticity_events': self.plasticity_events[-limit_logs:],
                 'structural_events': self.structural_events[-limit_logs:],
@@ -2124,14 +2135,19 @@ class NetworkParameters:
     
     # --- Core Neuron Properties (Neuraxon) ---
     membrane_time_constant: float = 20.0 
-    firing_threshold_excitatory: float = 0.70  # v2.36: Raised from 0.45 - requires stronger stimulation for excitation
-    firing_threshold_inhibitory: float = -0.70  # v2.36: Raised from -0.45 - symmetry maintained
+    # v2.37b: ASYMMETRIC thresholds - inhibitory is MUCH easier to reach
+    # BIOINSPIRED: GABAergic interneurons have lower activation thresholds
+    firing_threshold_excitatory: float = 0.60  # Slightly lower than v2.36
+    firing_threshold_inhibitory: float = -0.25  # v2.37b: DRAMATICALLY lowered from -0.70
     adaptation_rate: float = 0.08  # v2.36: Raised from 0.02 - stronger spike-frequency adaptation
     spontaneous_firing_rate: float = 0.012  # v2.36: Reduced from 0.035 - biological neurons fire 1-5Hz baseline
     neuron_health_decay: float = 0.001 
     
     # --- Membrane Potential Dynamics (NEW v2.36) ---
-    resting_potential_decay: float = 0.12  # Rate at which membrane potential decays toward zero (resting) 
+    resting_potential_decay: float = 0.06  # v2.37b: HALVED - allow negative states to persist longer
+    
+    # --- Negative Bias for E/I Balance (NEW v2.37c) ---
+    membrane_negative_bias: float = -0.25  # was -0.15, need 1.5x more
     
     # --- Dendritic Branch Properties ---
     num_dendritic_branches: int = 3 
@@ -2228,10 +2244,11 @@ class NetworkParameters:
     # processing. The neutral state is the computational "buffer" where integration occurs.
     adaptive_threshold_enabled: bool = True
     adaptive_threshold_check_interval: int = 12  # v2.36: More frequent checks
-    adaptive_threshold_adjustment: float = 0.04  # v2.36: Stronger correction  
+    adaptive_threshold_adjustment: float = 0.06  # v2.37b: Even stronger correction  
     min_excitatory_fraction: float = 0.15  # v2.36: Floor for maintaining some activity
-    max_excitatory_fraction: float = 0.30  # v2.36: Ceiling - neutral should dominate above this
+    max_excitatory_fraction: float = 0.28  # v2.37b: Slightly lower
     target_excitatory_fraction: float = 0.22  # v2.36: NEW - optimal target for criticality
+    min_inhibitory_fraction: float = 0.10  # v2.37b: NEW - minimum inhibitory for E/I balance
     target_inhibitory_fraction: float = 0.10  # v2.36: NEW - ensures inhibitory presence
     
     # --- Aigarth Hybridization (Section 8) ---
@@ -2734,7 +2751,8 @@ class Neuraxon:
             is_spontaneous_firing = True
             if self.params.spontaneous_as_current:
                 # Inject current (allows competition)
-                spontaneous = random.choice([-1.0, 1.0]) * self.params.spontaneous_current_magnitude
+                # 90% inhibitory instead of 70%
+                spontaneous = random.choice([-1.0]*9 + [1.0]) * self.params.spontaneous_current_magnitude
             else:
                 # Legacy: force threshold
                 if random.random() < 0.5:
@@ -2745,16 +2763,26 @@ class Neuraxon:
         threshold_mod = (acetylcholine - 0.5) * 0.5 + sum(modulatory_inputs) * 0.3
         gain = 1.0 + (norepi - 0.5) * 0.4
         
-        drive = (total_synaptic + external_input + spontaneous) * gain
+        # v2.37b: Add global negative bias to promote inhibitory states
+        negative_bias = getattr(self.params, 'membrane_negative_bias', -0.03)
+        
+        drive = (total_synaptic + external_input + spontaneous + negative_bias * 5.0) * gain
+        
         tau_eff = max(1.0, self.intrinsic_timescale)
         prev_state = self.trinary_state
         
-        # v2.36: BIOINSPIRED - Membrane potential decay toward resting potential
-        # Real neurons have leak currents (K+ channels) that pull membrane potential back to rest
-        # This creates the neutral state dominance seen in biological recordings
+        # v2.37b: MODIFIED - Asymmetric membrane decay
+        # Decay POSITIVE potentials faster than negative ones
+        # This helps maintain E/I balance by allowing inhibitory states to persist
         if hasattr(self.params, 'resting_potential_decay'):
             resting_decay = self.params.resting_potential_decay * dt
-            self.membrane_potential *= (1.0 - resting_decay)
+            if self.membrane_potential > 0:
+                # Positive potentials decay normally toward zero
+                self.membrane_potential *= (1.0 - resting_decay)
+            else:
+                # Negative potentials decay MORE SLOWLY (half rate)
+                # BIOINSPIRED: Inhibitory postsynaptic potentials often have longer time constants
+                self.membrane_potential *= (1.0 - resting_decay * 0.5)
         
         # Store previous potential for subthreshold logging
         prev_potential = self.membrane_potential
@@ -2762,7 +2790,9 @@ class Neuraxon:
         # Use individualized adaptation_rate indirectly via adaptation variable dynamics
         self.membrane_potential += dt / tau_eff * (-self.membrane_potential + drive - self.adaptation)
         
-        # v2.36: BIOINSPIRED - Stronger spike-frequency adaptation
+        # v2.37b: BIOINSPIRED - Asymmetric adaptation
+        # Adaptation after excitatory firing is STRONGER than after inhibitory
+        # This creates natural tendency toward E/I balance
         # Real neurons show strong adaptation after firing, reducing subsequent excitability
         # This creates refractory-like periods that increase neutral state time
         adaptation_target = 0.25 * abs(self.trinary_state) + 0.08 * (1 if self.trinary_state != 0 else 0)
@@ -2796,16 +2826,18 @@ class Neuraxon:
         # v2.36: Increased autoreceptor effect for stronger negative feedback
         autoreceptor_effect = 0.22 * self.autoreceptor
         theta_exc = self.firing_threshold_excitatory - threshold_mod + autoreceptor_effect + threshold_energy_mod
-        theta_inh = self.firing_threshold_inhibitory - threshold_mod - autoreceptor_effect - threshold_energy_mod
+        # v2.37b: Inhibitory threshold has REDUCED autoreceptor effect (easier to fire inhibitory)
+        theta_inh = self.firing_threshold_inhibitory - threshold_mod - autoreceptor_effect * 0.3 - threshold_energy_mod * 0.3
         
-        # v2.36: BIOINSPIRED - Hysteresis in state transitions
-        # Once in neutral state, require slightly more depolarization to exit
-        # This creates "stickiness" of the neutral state, as seen in real neurons
-        hysteresis = 0.025 if self.trinary_state == 0 else 0.0
+        # v2.37b: ASYMMETRIC hysteresis - easier to enter/stay in inhibitory
+        # Excitatory has MORE hysteresis (harder to reach/stay)
+        # Inhibitory has LESS hysteresis (easier to reach/stay)
+        hysteresis_exc = 0.04 if self.trinary_state == 0 else 0.0
+        hysteresis_inh = 0.01 if self.trinary_state == 0 else 0.0
         
-        if self.membrane_potential > (theta_exc + hysteresis): 
+        if self.membrane_potential > (theta_exc + hysteresis_exc): 
             self.trinary_state = TrinaryState.EXCITATORY.value
-        elif self.membrane_potential < (theta_inh - hysteresis): 
+        elif self.membrane_potential < (theta_inh - hysteresis_inh): 
             self.trinary_state = TrinaryState.INHIBITORY.value
         else: 
             self.trinary_state = TrinaryState.NEUTRAL.value
@@ -3242,6 +3274,10 @@ class NeuraxonNetwork:
         excitatory_count = sum(1 for n in active_neurons if n.trinary_state == 1)
         excitatory_fraction = excitatory_count / len(active_neurons)
         
+        # v2.37b: Track inhibitory for E/I balance homeostasis
+        inhibitory_count = sum(1 for n in active_neurons if n.trinary_state == -1)
+        inhibitory_fraction = inhibitory_count / len(active_neurons)
+        
         # Critical regime for branching ratio: σ ∈ [0.85, 1.15]
         sigma_ok = 0.85 <= sigma <= 1.15
         
@@ -3250,10 +3286,37 @@ class NeuraxonNetwork:
         exc_ok = abs(excitatory_fraction - target_exc) < 0.08
         
         # Only skip adjustment if BOTH criticality AND excitatory fraction are good
-        if sigma_ok and exc_ok:
+        # v2.37b: Also check inhibitory fraction
+        min_inh = getattr(self.params, 'min_inhibitory_fraction', 0.10)
+        inh_ok = inhibitory_fraction >= min_inh
+        
+        if sigma_ok and exc_ok and inh_ok:
             return
         
-        # v2.36: Prioritize excitatory fraction correction when sigma is acceptable
+        # v2.37b: PRIORITY 1 - Fix inhibitory deficit (most critical for E/I balance)
+        if not inh_ok and inhibitory_fraction < min_inh:
+            # Need more inhibitory - lower inhibitory threshold for ALL neurons
+            deficit = min_inh - inhibitory_fraction
+            adjustment_strength = min(0.05, deficit * 0.5)  # Proportional to deficit
+            
+            for neuron in active_neurons:
+                # Move inhibitory threshold toward zero (make it easier to reach)
+                new_inh = neuron.firing_threshold_inhibitory + adjustment_strength
+                neuron.firing_threshold_inhibitory = max(-0.50, min(-0.10, new_inh))
+            
+            # Log the adjustment
+            logger = get_data_logger()
+            if logger.log_level >= 2:
+                logger.log_homeostatic_event(
+                    tick=self.step_count,
+                    neuron_id=-2,  # -2 = inhibitory homeostasis
+                    old_value=inhibitory_fraction,
+                    new_value=min_inh,
+                    activity=excitatory_fraction
+                )
+            return  # Don't compound adjustments
+        
+        # v2.37b: PRIORITY 2 - Excitatory fraction correction
         # This ensures neutral state dominance even at criticality
         adjustment = 0.0
         reason = None
@@ -3691,6 +3754,7 @@ class NeuraxonNetwork:
             'temporal_sync': temporal_sync
         }
             
+   
     def to_dict(self) -> dict:
         """Serializes the entire network state into a single dictionary."""
         return {'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 
