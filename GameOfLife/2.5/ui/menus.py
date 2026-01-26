@@ -20,7 +20,7 @@ def run_config_screen() -> Optional[Dict[str, Any]]:
 
     pygame.init()
     screen = pygame.display.set_mode((1920, 1080), pygame.RESIZABLE)
-    pygame.display.set_caption("Neuraxon Game Of Life v 2.2 (Research Version) By David Vivancos & Dr Jose Sanchez for Qubic Science - Configuration")
+    pygame.display.set_caption("Neuraxon Game Of Life v 2.5 (Research Version) By David Vivancos & Dr Jose Sanchez for Qubic Science - Configuration")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 16); title_font = pygame.font.SysFont("consolas", 32, bold=True)
     
@@ -96,7 +96,7 @@ def run_config_screen() -> Optional[Dict[str, Any]]:
                     return None # Exit config screen after test mode finishes
 
         screen.fill((15, 15, 18))
-        title_surf = title_font.render("Neuraxon Game Of Life 2.0 (Research Version) - World Configuration", True, (235, 235, 240))
+        title_surf = title_font.render("Neuraxon Game Of Life 2.5 (Research Version) - World Configuration", True, (235, 235, 240))
         screen.blit(title_surf, (screen.get_width() // 2 - title_surf.get_width() // 2, 50))
         for slider in sliders: slider.draw(screen, font)
         

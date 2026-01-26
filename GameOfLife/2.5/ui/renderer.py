@@ -21,7 +21,7 @@ class Renderer:
     """Handles all Pygame-based rendering and user input for the main simulation window."""
     def __init__(self, world: 'World', textures: Dict[str, Optional[str]], textures_alpha: float):
         pygame.init()
-        pygame.display.set_caption("Neuraxon Game of Life v 2.0 (Research Version) - By David Vivancos & Dr Jose Sanchez for Qubic Science")
+        pygame.display.set_caption("Neuraxon Game of Life v 2.5 (Research Version) - By David Vivancos & Dr Jose Sanchez for Qubic Science")
         self.screen = pygame.display.set_mode((1920, 1080), pygame.RESIZABLE)
         self.clock = pygame.time.Clock()
         self.world = world
