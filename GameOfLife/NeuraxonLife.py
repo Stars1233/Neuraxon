@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.1.0 (Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
+# Neuraxon Game of Life v.1.0 (Original Research Version): A Trinary Bioinspired Neural Unit Implementation of initial life dynamics
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -2325,3 +2325,4 @@ if __name__ == "__main__":
         print("Game cancelled by user.")
         pygame.quit()
         sys.exit(0)
+
