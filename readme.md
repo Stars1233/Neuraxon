@@ -1,71 +1,92 @@
 # Neuraxon
 
 <div align="center">
-<a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3.7+-1f425f.svg?color=purple"></a>
+<a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3.8+-1f425f.svg?color=purple"></a>
 <a href="https://opensource.org/licenses/MIT"><img alt="License" src="https://img.shields.io/badge/License-MIT-blue"></a>
 <a href="https://huggingface.co/spaces/DavidVivancos/Neuraxon"><img src="https://img.shields.io/badge/🤗%20Demo-HuggingFace-yellow">(Network Builder)</a>
-<a href="https://huggingface.co/spaces/DavidVivancos/NeuraxonLife"><img src="https://img.shields.io/badge/🤗%20Demo-HuggingFace-yellow"> (Game Of Life Lite)</a>
+<a href="https://huggingface.co/spaces/DavidVivancos/NeuraxonLife"><img src="https://img.shields.io/badge/🤗%20Demo-HuggingFace-yellow"> (Game Of Life Lite 3D)</a>
 <a href="https://www.researchgate.net/publication/397331336_Neuraxon"><img src="https://img.shields.io/badge/Paper-ResearchGate-00CCBB.svg"></a>
 <a href="https://github.com/DavidVivancos/Neuraxon"><img alt="GitHub stars" src="https://img.shields.io/github/stars/DavidVivancos/Neuraxon?style=social"></a>
 <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2--1M-orange"></a>
-  <a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.1-TimeSeries"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2.1_Timeseries-orange"></a>
+<a href="https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.5-100K-TimeSeries"><img src="https://img.shields.io/badge/🤗%20Dataset-NeuraxonLife2.5_100K_Timeseries-orange"></a>
 </div>
 
 <br>
-New Research  2.5 and Lite version 2.0<br>
-Experience Neuraxon's  **Game of Life** Lite at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).<br>
-CHANGE LOG:<br>
-Jan 26th 2026:<br>
--> v.2.5 (Research Version): Updated new structure and several other improvements<br>
-Jan 24th 2026:<br>
--> v2.38: Biologically Plausible Spontaneous/Driven Activity Ratio<br>
--> v2.37: E/I Balance Fix <br>
-Jan 23rd 2026:<br>
--> v2.36: Bioinspired Trinary State Rebalancing<br>
--> v2.35: Properly caps intrinsic timescale<br>
-Jan 22nd 2026:<br>
--> v2.34: Inherit Synaptic Weights update<br>
-Jan 21st 2026:<br>
--> v2.33: code and performance optimizations<br>
--> v2.32: Autoreceptor Negative Feedback Fix<br>
-Jan 20th 2026:<br>
--> v.2.31: Synaptic Weight Homeostasis<br>
--> v.2.30: Energy-Aware Firing Threshold<br>
-Jan 17th 2026:<br>
--> v2.29: Global NeuroModulator updates<br>
--> v.2.30 Energy-Aware Firing Threshold <br>
-Jan 16th 2026:<br>
--> v2.28: Dopamine Dynamics update <br>
--> v2.27: Serotonin update  <br>
-Jan 15th 2026:<br>
--> v2.26: Neuromodulators update<br>
-Jan 12th 2026:<br>
--> v2.25: Log Mode 3 enabled for deep detailed timeseries at non agragated Nxer level<br>
-Jan 10th 2026:<br>
--> v2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance<br>
-Jan 9th 2026:<br>
--> v2.23: God mode disabled and improved biological parameters  <br>
-Jan 8th 2026:<br>
--> v2.21: New Nxrs Naming convention for Long Game Tracking Through sesions no more duplicate names in next rounds<br>
--> v2.22: Extra Logging enabled up to 1000s timesteps configurable<br>
-Jan 7th 2026 v 2.2 Research update. Enhanced Full Fledged Inheritance <br>
-Jan 4th 2026 v 2.1 Research update. and new HF Dataset https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.1-TimeSeries<br>
 
+## 🚀 Neuraxon Game of Life v3.0 Released!
 
-### Lite Version Features, (Research edition bellow):
-- 🌍 **Procedurally Generated Worlds**: Island-like terrains with land, sea, and obstacles and new Earth mode in V 2.0
-- 🧬 **Evolutionary Dynamics**: Agents reproduce, passing neural parameters to offspring
-- 🍖 **Resource Competition**: Food sources respawn dynamically; agents must forage to survive
-- 🤝 **Social Behaviors**: Mating, cooperation, and competition emerge from neural dynamics
-- 🧠 **Neural Diversity**: Each agent has unique network parameters (learning rates, timescales, connectivity)
-- 📊 **Real-time Analytics**: Track food consumption, exploration, mating success, and fitness scores
+**Bio-Physical Coupling: Circadian Rhythms, Thermodynamics & Proprioception.**
 
-No installation required—just open your browser and explore!
+Experience the new **3D WebGL Lite Version** at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).
 
-## 📸 Game Screenshot
+### 📅 Change Log
+
+**January 29th 2026: v3.0 (New Release)**
+- 🌗 **Circadian Rhythms**: Implemented bio-inspired Day/Night cycles affecting metabolism, hormone levels (Melatonin/Serotonin), and behavior.
+- 🌡️ **Thermodynamics System**: Added body temperature regulation, environmental heat exchange, and social huddling mechanics.
+- 🧱 **Proprioception**: Agents now possess "body awareness" to detect collision history and escape movement loops.
+- 🧠 **Expanded Architecture**: Network updated to **9 Inputs / 6 Outputs** to process environmental and somatic data.
+- 📁 **Modular Refactoring**: Codebase restructured into a scalable Python package format.
+
+**Previous January 2026 Updates (v2.x)**
+- Find them here: https://github.com/DavidVivancos/Neuraxon/blob/main/GameOfLife/changelog.md
+---
+
+## 🎮 Lite Version 3.0 (3D WebGL)
+
+The Lite version has been completely overhauled with a 3D engine while maintaining the core Neuraxon logic.
+
+### New Features:
+- **3D Spherical World**: Agents roam a planet-like grid, in full 3D via Three.js.
+- **Dynamic Lighting**: Real-time Day/Night cycles with orbiting sun and atmosphere scattering.
+- **Visual Feedback**:
+  - 🌡️ Temperature indicators (Freeze/Overheat icons).
+  - 💤 Resting/Sleeping animations (dimming/slower pulse).
+  - ❤️ Particle effects for mating and birth.
+  - 🌍 **Real Earth Map**: New simulation mode using real-world topographical data.
+
+## 📸 Game of Life Lite Version Screenshot
 <div align="center">
-  <img src="images/NeuraxonGameOfLife2.0-DemoSreenshot.png" alt="Neuraxon Game of Life Visualization" width="90%"/>  
+  <img src="images/NeuraxonGameOfLife3.0-DemoSreenshot.jpg" alt="Neuraxon Game of Life Visualization" width="90%"/>  
 </div>
+
+
+
+## 🧠 v3.0 Key Innovations
+
+### 1. Circadian Entrainment (The SCN Model)
+Just as the Suprachiasmatic Nucleus (SCN) regulates biology based on light:
+- **Phase 0.0 - 0.25 (Dawn/Day):** Dopamine & Norepinephrine rise (Activity).
+- **Phase 0.50 - 0.75 (Dusk/Night):** Serotonin rises (Sleep/Maintenance).
+- **Metabolic Impact:** Basal metabolic rate drops at night, conserving energy.
+
+### 2. Thermodynamic Regulation
+Agents now possess `body_temperature`.
+- **Sources:** Metabolism (food), Activity (movement), Environment (sun), Social (huddling).
+- **Q10 Effect:** Neural firing rates and spontaneous activity scale with temperature.
+- **Homeostasis:** Agents must seek shade or warmth to maintain optimal ~37°C.
+
+### 3. Proprioception
+Input neurons now receive feedback from the agent's physical interactions:
+- Detects repeated collisions (rocks/walls).
+- Triggers **Force Turn** reflexes via Norepinephrine stress response to escape local minima (getting stuck).
+
+---
+
+## 📸 Demo Screenshots
+
+<div align="center">
+  <img src="images/NeuraxonDemoSreenshot.png" alt="Neuraxon 3D Visualization" width="40%"/>
+  <img src="images/NeuraxonDemoSreenshot2.png" alt="Neuraxon 3D Visualization" width="40%"/>
+  <p><i>Interactive 3D visualization showing neural activity and neuromodulator flow</i></p>
+</div>
+
+<hr />
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=DavidVivancos/Neuraxon&type=date&legend=top-left)](https://www.star-history.com/#DavidVivancos/Neuraxon&type=date&legend=top-left)
+
 
 <hr />
 
@@ -127,19 +148,6 @@ Also Experience Neuraxon's trinary neural dynamics with our **interactive 3D vis
 
 No installation required—just open your browser and explore!
 
-## 📸 Demo Screenshots
-
-<div align="center">
-  <img src="images/NeuraxonDemoSreenshot.png" alt="Neuraxon 3D Visualization" width="40%"/>
-  <img src="images/NeuraxonDemoSreenshot2.png" alt="Neuraxon 3D Visualization" width="40%"/>
-  <p><i>Interactive 3D visualization showing neural activity and neuromodulator flow</i></p>
-</div>
-
-<hr />
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=DavidVivancos/Neuraxon&type=date&legend=top-left)](https://www.star-history.com/#DavidVivancos/Neuraxon&type=date&legend=top-left)
 
 ## 👋 Overview
 
@@ -355,38 +363,6 @@ The hybrid creates "living neural tissue" that:
 - Undergoes selection based on task performance
 - Exhibits emergent complexity and self-organization
 
-
-## 🎮 Neuraxon Game of Life 2.5
-
-**A complete artificial life simulation powered by Neuraxon networks!**
-
-* 2.01 version update: Added Metabolic Rate to the network parameters and calculations replacing  death by inactivity
-* 2.02 version update: Fixed the Dopamine LTD and LTP thresholds to prevent always-on depression and always-on potentiation
-* 2.03 version update: Improved save/load functionality including spike history, pre/post traces, state history and activation_history
-* 2.1 version update:  Increased metabolic ramp to avoid dead agents,  Added autoSave and Level 2 logging default with in depth dynamics Increases Log size by 10x aprox
-* 2.2 version update: Enhanced Full Fledged Inheritance
-* 2.21 version update: New Nxrs Naming convention for Long Game Tracking Through sesions no more duplicate names in next rounds
-* 2.22: Extra Logging enabled up to 1000s of timesteps configurable
-* 2.23: God mode disabled and improved biological parameters
-* 2.24: Sparse comrpesing some Timeseries data to reduce memory usage and improve performance
-* 2.25: Log Mode 3 enabled for deep detailed timeseries at non agragated Nxer level
-* 2.26: Neuromodulators update
-* 2.27: Serotonin update
-* 2.28: Dopamine Dynamics update
-* 2.29: Global NeuroModulator updates
-* 2.30: Energy-Aware Firing Threshold
-* 2.31: Synaptic Weight Homeostasis
-* 2.32: Autoreceptor Negative Feedback Fix
-* 2.33: code and performance optimizations
-* 2.34: Inherit Synaptic Weights update
-* 2.35: Properly caps intrinsic timescale
-* 2.36: Bioinspired Trinary State Rebalancing
-* 2.37: E/I Balance Fix
-* 2.38: Biologically Plausible Spontaneous/Driven Activity Ratio
-* 2.5: Full Updated new structure (no more single file) and several other improvement 
-
-The **Neuraxon Game of Life ** is a sophisticated demonstration of the framework's capabilities in an evolutionary, multi-agent environment. Each agent (called an "NxEr") is controlled by its own Neuraxon network, allowing emergent behaviors and evolutionary dynamics.
-
 ### Features
 
 - 🌍 **Procedurally Generated Worlds**: Island-like terrains with land, sea, and obstacles
@@ -397,100 +373,6 @@ The **Neuraxon Game of Life ** is a sophisticated demonstration of the framework
 - 📊 **Real-time Analytics**: Track food consumption, exploration, mating success, and fitness scores
 - ⚡ **Parallel Processing**: Multi-core neural network updates for scalable simulations
 - 💾 **Save/Load System**: Preserve entire worlds or extract champion agents - Test Mode for Automated World creation
-
-### Running the Simulation
-
-```bash
-# Launch with default settings
-python NeuraxonGameOfLife2.py
-
-# The configuration screen allows you to customize:
-# - World size and terrain composition
-# - Starting population and maximum agents
-# - Food availability and respawn rates
-# - Neural network complexity
-# - Simulation speed and physics
-```
-
-### Gameplay Controls
-
-**Camera:**
-- `WASD` or `Arrow Keys`: Pan camera
-- `Mouse Wheel`: Zoom in/out
-- `Q/E`: Rotate view
-- `Right Mouse Drag`: Pan camera
-
-**Simulation:**
-- `Space`: Pause/Resume
-- `S`: Quick save
-- `L`: Quick load
-- `Click Agent`: View detailed stats (when paused)
-- `Click Name in Rankings`: Select agent for inspection
-
-**UI Buttons:**
-- **Save Game**: Export complete world state
-- **Load Game**: Import saved simulation
-- **Save Best**: Export top-performing agents
-- **Save NxEr/NxVizer**: Export individual agent brains
-
-### Agent Behavior
-
-Each NxEr has a **5-output Neuraxon network**:
-- **Outputs 1-2**: Movement direction (X, Y)
-- **Output 3**: Cooperation/sharing signal
-- **Output 4**: Mating/attack intention
-- **Output 5**: Clan Food sharing/help
-
-**Input sensors** (6 neurons):
-- Food detection
-- Agent proximity
-- Terrain type
-- Vison range
-- smeel radius
-- Hunger
-
-Agents exhibit:
-- **Foraging**: Seeking and harvesting food sources
-- **Exploration**: Discovering new territories
-- **Mating**: Reproducing when conditions are favorable
-- **Resource Management**: Balancing energy consumption
-- **Adaptation**: Networks evolve through STDP and neuromodulation
-
-### Evolutionary Mechanics
-
-- **Reproduction**: Two agents can mate to produce offspring
-- **Inheritance**: Child inherits neural parameters from both parents with variation
-- **Selection**: Agents with low fitness die off; successful agents propagate
-- **Amphibious Evolution**: Shore-based mating can produce amphibious offspring
-- **Champion System**: Top performers survive across game rounds
-
-### Performance Metrics
-
-The simulation tracks multiple fitness dimensions:
-- **Food Found**: Total food discovered
-- **Food Taken**: Resources acquired from others
-- **World Explored**: Unique tiles visited
-- **Time Lived**: Survival duration
-- **Mates Performed**: Reproductive success
-- **Fitness Score**: Composite metric combining all factors
-
-### Technical Highlights
-
-- **Multiprocessing**: Worker pool distributes neural network updates across CPU cores
-- **Adaptive Time-Stepping**: Simulation speed adjusts based on network activity
-- **Toroidal World**: Wrapping boundaries create an infinite-feeling space
-- **Collision Resolution**: Sophisticated interaction system for multi-agent conflicts
-- **Energy Metabolism**: Biologically-inspired resource constraints
-- **Neuromodulator Diffusion**: Spatial propagation of dopamine, serotonin, etc.
-
-This simulation demonstrates Neuraxon's suitability for:
-- Multi-agent reinforcement learning
-- Evolutionary computation
-- Artificial life research
-- Emergent behavior studies
-- Cognitive robotics
-
-
 
 
 ## 📚 Citation
@@ -517,6 +399,19 @@ If you use the NeuraxonLife2-1M dataset, please also cite:
   url={https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2-1M}
 }
 ```
+
+If you use the NeuraxonLife2.5-100K-TimeSeries dataset, please also cite:
+```bibtex
+@dataset{NeuraxonLife2.5-100K-TimeSeries,
+  title={Neuraxon: Artificial Life 2.5 BioInspired Neural Network Simulation 100K-TimeSeries Dataset},
+  author={Vivancos, David and Sanchez, Jose},
+  year={2025},
+  publisher={Hugging Face},
+  url={https://huggingface.co/datasets/DavidVivancos/NeuraxonLife2.5-100K-TimeSeries}
+}
+```
+
+
 
 ## 🤝 Contributing
 
@@ -575,52 +470,3 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
