@@ -13,15 +13,19 @@
 
 <br>
 
-## 🚀 Neuraxon Game of Life v3.0 Released!
+## 🚀 Neuraxon Game of Life v3.01 Released!
 
 **Bio-Physical Coupling: Circadian Rhythms, Thermodynamics & Proprioception.**
 
 Experience the new **3D WebGL Lite Version** at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).
 
 ### 📅 Change Log
+**January 31st 2026: v3.01**
+Neuraxon Game of Life v.3.01 (Research Version): Updated Input and Output Neurons
+- NUM_INPUT_NEURONS = 9   # Movement, Terrain, TerrainType, Hunger, Sight, Smell, DayNight, Temperature, Proprioception
+- NUM_OUTPUT_NEURONS = 6  # MoveX, MoveY, Social, MateIntent, GiveFood, Resting<br>
 
-**January 29th 2026: v3.0 (New Release)**
+**January 29th 2026: v3.0**
 - 🌗 **Circadian Rhythms**: Implemented bio-inspired Day/Night cycles affecting metabolism, hormone levels (Melatonin/Serotonin), and behavior.
 - 🌡️ **Thermodynamics System**: Added body temperature regulation, environmental heat exchange, and social huddling mechanics.
 - 🧱 **Proprioception**: Agents now possess "body awareness" to detect collision history and escape movement loops.
@@ -52,7 +56,7 @@ The Lite version has been completely overhauled with a 3D engine while maintaini
 
 
 
-## 🧠 v3.0 Key Innovations
+## 🧠 v3 Key Innovations
 
 ### 1. Circadian Entrainment (The SCN Model)
 Just as the Suprachiasmatic Nucleus (SCN) regulates biology based on light:
@@ -470,3 +474,4 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
