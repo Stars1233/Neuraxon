@@ -61,7 +61,7 @@ class DataLogger:
         self.game_metadata = {
             'start_timestamp': datetime.now().isoformat(),
             'log_level': self.log_level,
-            'version': '2.05'
+            'version': '3.1'
         }
         
         self.summary = {
@@ -180,6 +180,11 @@ class DataLogger:
             'temperature_variance': [],
             'resting_fraction': [],  # Fraction of NxErs in rest mode
             'proprioceptron_forced_turns': [],
+            # NEW v3.1: Additional time series for new inputs/outputs
+            'daynight_input_distribution': [],  # Distribution of day/night input signals
+            'temperature_input_distribution': [],  # Distribution of temp input signals
+            'proprioception_input_distribution': [],  # Distribution of proprio input signals
+            'resting_output_distribution': [],  # Distribution of resting output signals
             'rock_collision_rate': [],
             
             # NEW: Autoreceptor dynamics
@@ -637,11 +642,45 @@ class DataLogger:
             total_hits = sum(getattr(a, 'proprioceptron', Proprioceptron()).total_rock_hits for a in alive_nxers)
             self.time_series['proprioceptron_forced_turns'].append(total_forced)
             self.time_series['rock_collision_rate'].append(total_hits / max(1, len(alive_nxers)))
+            
+            # NEW v3.1: Track new input/output distributions
+            daynight_dist = {'night': 0, 'transition': 0, 'day': 0}
+            temp_dist = {'cold': 0, 'normal': 0, 'hot': 0}
+            proprio_dist = {'blocked': 0, 'normal': 0, 'clear': 0}
+            rest_dist = {'active': 0, 'normal': 0, 'rest': 0}
+            
+            for a in alive_nxers:
+                inputs = getattr(a, 'last_inputs', (0,)*9)
+                outputs = getattr(a, 'last_outputs', (0,)*6)
+                if len(inputs) >= 9:
+                    if inputs[6] == -1: daynight_dist['night'] += 1
+                    elif inputs[6] == 1: daynight_dist['day'] += 1
+                    else: daynight_dist['transition'] += 1
+                    if inputs[7] == -1: temp_dist['cold'] += 1
+                    elif inputs[7] == 1: temp_dist['hot'] += 1
+                    else: temp_dist['normal'] += 1
+                    if inputs[8] == -1: proprio_dist['blocked'] += 1
+                    elif inputs[8] == 1: proprio_dist['clear'] += 1
+                    else: proprio_dist['normal'] += 1
+                if len(outputs) >= 6:
+                    if outputs[5] == -1: rest_dist['active'] += 1
+                    elif outputs[5] == 1: rest_dist['rest'] += 1
+                    else: rest_dist['normal'] += 1
+            
+            self.time_series['daynight_input_distribution'].append(daynight_dist)
+            self.time_series['temperature_input_distribution'].append(temp_dist)
+            self.time_series['proprioception_input_distribution'].append(proprio_dist)
+            self.time_series['resting_output_distribution'].append(rest_dist)
         else:
             for key in ['circadian_phase', 'day_night_state', 'mean_body_temperature',
                        'temperature_variance', 'resting_fraction', 
-                       'proprioceptron_forced_turns', 'rock_collision_rate']:
-                self.time_series[key].append(0.0)
+                       'proprioceptron_forced_turns', 'rock_collision_rate',
+                       'daynight_input_distribution', 'temperature_input_distribution',
+                       'proprioception_input_distribution', 'resting_output_distribution']:
+                if key.endswith('_distribution'):
+                    self.time_series[key].append({})
+                else:
+                    self.time_series[key].append(0.0)
         
         # === AUTORECEPTOR DYNAMICS ===
         autoreceptors = [n.autoreceptor for n in all_active_neurons]
@@ -1338,6 +1377,30 @@ class DataLogger:
                 'inputs': list(inputs),
                 'outputs': list(outputs)
             })
+            
+            # NEW v3.1: Track specific new input/output usage
+            if len(inputs) >= 9:
+                self.summary.setdefault('input_6_daynight_usage', {'night': 0, 'transition': 0, 'day': 0})
+                self.summary.setdefault('input_7_temperature_usage', {'cold': 0, 'normal': 0, 'hot': 0})
+                self.summary.setdefault('input_8_proprioception_usage', {'blocked': 0, 'normal': 0, 'clear': 0})
+                
+                if inputs[6] == -1: self.summary['input_6_daynight_usage']['night'] += 1
+                elif inputs[6] == 1: self.summary['input_6_daynight_usage']['day'] += 1
+                else: self.summary['input_6_daynight_usage']['transition'] += 1
+                
+                if inputs[7] == -1: self.summary['input_7_temperature_usage']['cold'] += 1
+                elif inputs[7] == 1: self.summary['input_7_temperature_usage']['hot'] += 1
+                else: self.summary['input_7_temperature_usage']['normal'] += 1
+                
+                if inputs[8] == -1: self.summary['input_8_proprioception_usage']['blocked'] += 1
+                elif inputs[8] == 1: self.summary['input_8_proprioception_usage']['clear'] += 1
+                else: self.summary['input_8_proprioception_usage']['normal'] += 1
+            
+            if len(outputs) >= 6:
+                self.summary.setdefault('output_5_resting_usage', {'force_active': 0, 'normal': 0, 'rest': 0})
+                if outputs[5] == -1: self.summary['output_5_resting_usage']['force_active'] += 1
+                elif outputs[5] == 1: self.summary['output_5_resting_usage']['rest'] += 1
+                else: self.summary['output_5_resting_usage']['normal'] += 1
     
     def update_nxer_stats(self, nxer: 'NxEr'):
         self.nxer_summary['max_food_found'] = max(self.nxer_summary['max_food_found'], nxer.stats.food_found)

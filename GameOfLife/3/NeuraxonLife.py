@@ -1,7 +1,11 @@
-# Neuraxon Game of Life v.3.0 (Research Version): Circadian cycle , Temperature and Proprioception first implementation
+# Neuraxon Game of Life v.3.01 (Research Version): Updated Input and Output Neurons
+#NUM_INPUT_NEURONS = 9   # Movement, Terrain, TerrainType, Hunger, Sight, Smell, DayNight, Temperature, Proprioception
+#NUM_OUTPUT_NEURONS = 6  # MoveX, MoveY, Social, MateIntent, GiveFood, Resting
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
+# Change Log
+# v3.0: Circadian cycle , Temperature and Proprioception updates
 
 import sys
 import pygame

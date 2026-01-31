@@ -299,7 +299,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
     
     def _random_params(hidden_max: int) -> NetworkParameters:
         """Creates a randomized set of network parameters WITH BIOLOGICAL CORRELATIONS."""
-        p = NetworkParameters(network_name="Neuraxon NxEr", num_input_neurons=6, num_hidden_neurons=random.randint(3, hidden_max), num_output_neurons=5)
+        p = NetworkParameters(network_name="Neuraxon NxEr", num_input_neurons=9, num_hidden_neurons=random.randint(3, hidden_max), num_output_neurons=6)
         
         # --- Network Topology ---
         p.connection_probability = random.uniform(0.06, 0.19) 
@@ -401,6 +401,14 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         p.max_axonal_delay = random.uniform(5.0, 15.0)
         p.activity_threshold = random.uniform(0.3, 0.7)
         
+        # --- NEW v3.1: Brain-Instinct Balance ---
+        p.brain_movement_base_weight = random.uniform(0.5, 0.9)
+        p.brain_rest_override_threshold = random.uniform(0.2, 0.4)
+        p.circadian_rest_tendency = random.uniform(0.5, 0.85)
+        p.temp_cold_threshold = random.uniform(34.5, 36.0)
+        p.temp_hot_threshold = random.uniform(38.0, 39.5)
+        p.temp_movement_bonus = random.uniform(0.1, 0.25)
+        
         # --- Temporal/Simulation ---
         p.dt = 1.0
         p.simulation_steps = random.randint(10, max(20, 2 * GlobalTimeSteps))
@@ -469,7 +477,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
             proprioceptron=Proprioceptron()
         )
         used_colors.add(nx.color)
-        nx.last_inputs = (0, 0, 0, 0, 0, 0)
+        # UPDATED v3.1: 9 inputs
+        nx.last_inputs = (0, 0, 0, 0, 0, 0, 0, 0, 0)
         return nx
     
     def spawn_child(A: NxEr, B: NxEr, near_pos: Tuple[int, int]) -> Optional[NxEr]:
@@ -650,7 +659,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         alive_names = {a.name for a in nxers.values() if a.alive}
         while name in alive_names: name = f"{base_name}{counter}"; counter += 1
         a = NxEr(id=(max(nxers.keys()) + 1) if nxers else 0, name=name, color=tuple(nd.get("color", (200, 200, 200))), pos=pos, can_land=nd["can_land"], can_sea=nd["can_sea"], 
-        net=net, food=float(StartFood), is_male=bool(nd.get("is_male", random.random() < 0.5)), alive=True, born_ts=time.time(), died_ts=None, last_inputs=tuple(nd.get("last_inputs", (0, 0, 0, 0, 0, 0))), last_outputs=tuple(nd.get("last_outputs", (0, 0, 0, 0, 0))), ticks_per_action=int(nd.get("ticks_per_action", 1)), tick_accum=int(nd.get("tick_accum", 0)), harvesting=nd["harvesting"], mating_with=nd["mating_with"], mating_end_tick=nd["mating_end_tick"], stats=NxErStats(**nd.get("stats", {})), visited=set(map(tuple, nd.get("visited", []))), dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), _last_O4=int(nd.get("_last_O4", 0)), mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), parents=tuple(nd.get("parents", [None, None])), mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), last_move_tick=int(nd.get("last_move_tick", step_tick)), last_pos=tuple(nd.get("last_pos", pos)),
+        net=net, food=float(StartFood), is_male=bool(nd.get("is_male", random.random() < 0.5)), alive=True, born_ts=time.time(), died_ts=None, last_inputs=tuple(nd.get("last_inputs", (0, 0, 0, 0, 0, 0, 0, 0, 0))), last_outputs=tuple(nd.get("last_outputs", (0, 0, 0, 0, 0, 0))), ticks_per_action=int(nd.get("ticks_per_action", 1)), tick_accum=int(nd.get("tick_accum", 0)), harvesting=nd["harvesting"], mating_with=nd["mating_with"], mating_end_tick=nd["mating_end_tick"], stats=NxErStats(**nd.get("stats", {})), visited=set(map(tuple, nd.get("visited", []))), dopamine_boost_ticks=int(nd.get("dopamine_boost_ticks", 0)), _last_O4=int(nd.get("_last_O4", 0)), mating_intent_until_tick=int(nd.get("mating_intent_until_tick", 0)), parents=tuple(nd.get("parents", [None, None])), mate_cooldown_until_tick=int(nd.get("mate_cooldown_until_tick", 0)), last_move_tick=int(nd.get("last_move_tick", step_tick)), last_pos=tuple(nd.get("last_pos", pos)),
                  vision_range=nd.get("vision_range", 5), smell_radius=nd.get("smell_radius", 3), heading=nd.get("heading", 0), clan_id=nd.get("clan_id", None))
         a.tick_accum = 0; a.harvesting = None; a.mating_with = None; a.mating_end_tick = None; a.mating_intent_until_tick = 0; a.mate_cooldown_until_tick = 0
         nxers[a.id] = a
@@ -687,7 +696,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         
         vision = random.randint(2, 15); smell = random.randint(2, 5); heading = random.randint(0, 7)
         
-        a = NxEr(id=(max(nxers.keys()) + 1) if nxers else 0, name=name, color=_rand_color(list(used_colors)), pos=pos, can_land=can_land, can_sea=can_sea, net=net, food=float(StartFood), is_male=random.random() < 0.5, alive=True, born_ts=time.time(), died_ts=None, last_inputs=(0, 0, 0, 0, 0, 0), ticks_per_action=max(1, int(GlobalTimeSteps / max(1, params.simulation_steps))), tick_accum=0, harvesting=None, mating_with=None, mating_end_tick=None, stats=NxErStats(), visited=set([pos]), dopamine_boost_ticks=0, _last_O4=0, mating_intent_until_tick=0, parents=(None, None), mate_cooldown_until_tick=0, last_move_tick=step_tick, last_pos=pos,
+        a = NxEr(id=(max(nxers.keys()) + 1) if nxers else 0, name=name, color=_rand_color(list(used_colors)), pos=pos, can_land=can_land, can_sea=can_sea, net=net, food=float(StartFood), is_male=random.random() < 0.5, alive=True, born_ts=time.time(), died_ts=None, last_inputs=(0, 0, 0, 0, 0, 0, 0, 0, 0), ticks_per_action=max(1, int(GlobalTimeSteps / max(1, params.simulation_steps))), tick_accum=0, harvesting=None, mating_with=None, mating_end_tick=None, stats=NxErStats(), visited=set([pos]), dopamine_boost_ticks=0, _last_O4=0, mating_intent_until_tick=0, parents=(None, None), mate_cooldown_until_tick=0, last_move_tick=step_tick, last_pos=pos,
                  vision_range=vision, smell_radius=smell, heading=heading, clan_id=None)
         used_colors.add(a.color); nxers[a.id] = a; occupied.add(a.pos)
         print(f"[LOAD NxVizer] spawned {a.name} at {a.pos}")
@@ -825,6 +834,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                 "is_resting": getattr(a, 'is_resting', False),
                 "proprioceptron_rock_hits": a.proprioceptron.total_rock_hits if hasattr(a, 'proprioceptron') else 0,
                 "proprioceptron_forced_turns": a.proprioceptron.forced_turn_count if hasattr(a, 'proprioceptron') else 0,
+                # NEW v3.1: Additional proprioceptron and brain data
+                "proprioceptron_successful_streak": a.proprioceptron.successful_move_streak if hasattr(a, 'proprioceptron') else 0,
+                "proprioceptron_last_move_result": a.proprioceptron.last_move_result if hasattr(a, 'proprioceptron') else 0,
+                "consecutive_successful_moves": getattr(a, '_consecutive_successful_moves', 0),
+                "brain_movement_weight": getattr(a, 'brain_movement_weight', 0.5),
             } for a in nxers.values()],
             "foods": [{"id": f.id, "anchor": f.anchor, "pos": f.pos, "alive": f.alive, "respawn_at_tick": f.respawn_at_tick, "remaining": f.remaining, "progress": f.progress} for f in foods.values()],
             "all_time_best": {k: [{"name": a.name, "is_male": a.is_male, "stats": asdict(a.stats), "net": a.net.to_dict(), "can_land": a.can_land, "can_sea": a.can_sea, "ancestors": getattr(a, 'ancestors', []), "rounds_survived": getattr(a, 'rounds_survived', 0)} for a in v] for k, v in all_time_best.items()},
@@ -940,8 +954,28 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                 is_resting=nd.get("is_resting", False),
                 proprioceptron=Proprioceptron(
                     total_rock_hits=nd.get("proprioceptron_rock_hits", 0),
-                    forced_turn_count=nd.get("proprioceptron_forced_turns", 0)),
+                    forced_turn_count=nd.get("proprioceptron_forced_turns", 0))
             )
+            # NEW v3.1
+            if hasattr(a, 'proprioceptron'):
+                a.proprioceptron.successful_move_streak = nd.get("proprioceptron_successful_streak", 0)
+                a.proprioceptron.last_move_result = nd.get("proprioceptron_last_move_result", 0)
+            
+            # NEW v3.1 fields
+            a._consecutive_successful_moves = nd.get("consecutive_successful_moves", 0)
+            a.brain_movement_weight = nd.get("brain_movement_weight", 0.5)
+            
+            # Ensure last_inputs and last_outputs have correct length for v3.1
+            last_inputs = nd.get("last_inputs", (0,)*9)
+            if len(last_inputs) < 9:
+                last_inputs = tuple(list(last_inputs) + [0]*(9-len(last_inputs)))
+            a.last_inputs = last_inputs
+            
+            last_outputs = nd.get("last_outputs", (0,)*6)
+            if len(last_outputs) < 6:
+                last_outputs = tuple(list(last_outputs) + [0]*(6-len(last_outputs)))
+            a.last_outputs = last_outputs
+            
             nxers[a.id] = a
             if a.alive: occupied.add(a.pos)
         
@@ -1448,7 +1482,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         a.tick_accum = 0
                                                 
                         if step_tick < boot_random_until:
-                            inputs = [random.choice([-1, 0, 1]) for _ in range(6)]
+                            # UPDATED v3.1: 9 inputs
+                            inputs = [random.choice([-1, 0, 1]) for _ in range(9)]
                         else:
                             # [DOPAMINE UPDATE] Disappointment Dynamics
                             # Paper Claim: "It has to decrease when expectations fail (I look for food but don't find it)"
@@ -1546,12 +1581,68 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             elif found_nxer_smell: smell_val = 0
                             else: smell_val = -1
 
-                            # Combine with physical inputs from previous step
+                            # =========================================================
+                            # INPUT 6: DAY/NIGHT SIGNAL (NEW v3.1)
+                            # =========================================================
+                            # BIOINSPIRED: Circadian input to brain allows learned day/night behaviors
+                            # Trinary: -1=night (rest period), 0=transition (dawn/dusk), 1=day (active period)
+                            daynight_val = 0
+                            if circadian_enabled:
+                                phase = global_circadian_phase
+                                if 0.0 <= phase < 0.15 or 0.85 <= phase < 1.0:
+                                    daynight_val = 0  # Dawn/dusk transition
+                                elif 0.15 <= phase < 0.5:
+                                    daynight_val = 1  # Day - active period
+                                else:  # 0.5 <= phase < 0.85
+                                    daynight_val = -1  # Night - rest period
+                            
+                            # =========================================================
+                            # INPUT 7: TEMPERATURE SIGNAL (NEW v3.1)
+                            # =========================================================
+                            # BIOINSPIRED: Internal temperature affects behavior and metabolism
+                            # Trinary: -1=cold/hypothermic, 0=normal, 1=hot/hyperthermic
+                            temp_val = 0
+                            current_temp = getattr(a, 'body_temperature', 37.0)
+                            cold_thresh = getattr(a.net.params, 'temp_cold_threshold', 35.5)
+                            hot_thresh = getattr(a.net.params, 'temp_hot_threshold', 38.5)
+                            if current_temp < cold_thresh:
+                                temp_val = -1  # Hypothermic - need to move/seek warmth
+                            elif current_temp > hot_thresh:
+                                temp_val = 1   # Hyperthermic - need to rest/cool down
+                            else:
+                                temp_val = 0   # Normal temperature
+                            
+                            # =========================================================
+                            # INPUT 8: PROPRIOCEPTION SIGNAL (NEW v3.1)
+                            # =========================================================
+                            # BIOINSPIRED: Body awareness of movement success/failure history
+                            # Trinary: -1=repeatedly blocked, 0=normal, 1=clear path
+                            proprio_val = 0
+                            prop = getattr(a, 'proprioceptron', None)
+                            if prop is not None:
+                                # Check recent movement success
+                                clear_threshold = getattr(a.net.params, 'proprioceptron_clear_path_threshold', 5)
+                                if prop.consecutive_blocked >= 2:
+                                    proprio_val = -1  # Repeatedly blocked - suggests obstacle
+                                elif prop.consecutive_blocked == 0 and len(prop.rock_hit_history) == 0:
+                                    # Check if we've had clear movement for a while
+                                    if hasattr(a, '_consecutive_successful_moves'):
+                                        if a._consecutive_successful_moves >= clear_threshold:
+                                            proprio_val = 1  # Clear path - confident movement
+                                    else:
+                                        a._consecutive_successful_moves = 0
+                                else:
+                                    proprio_val = 0  # Normal - mixed history
+                            
+                            # Combine with physical inputs from previous step (UPDATED v3.1: 9 inputs)
                             inputs = list(a.last_inputs)
-                            if len(inputs) < 6: inputs = list(inputs) + [0]*(6-len(inputs))
+                            if len(inputs) < 9: inputs = list(inputs) + [0]*(9-len(inputs))
                             inputs[3] = hunger_val
                             inputs[4] = sight_val
                             inputs[5] = smell_val
+                            inputs[6] = daynight_val
+                            inputs[7] = temp_val
+                            inputs[8] = proprio_val
                         
                         a.last_inputs = tuple(inputs)
                         # [DOPAMINE UPDATE] Store current food for next tick's disappointment check
@@ -1589,12 +1680,53 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             if energy_status.get('efficiency', 0) > 0.5:
                                 data_logger.log_plasticity_event(step_tick, 'activity', -1, a.id, energy_status.get('efficiency', 0))
                         
-                        o = (outs + [0, 0, 0, 0, 0])[:5]
+                        # UPDATED v3.1: 6 outputs
+                        o = (outs + [0, 0, 0, 0, 0, 0])[:6]
                         a.last_outputs = tuple(o)
                         data_logger.log_io_pattern(step_tick, a.id, a.last_inputs, tuple(a.last_outputs))
-                        O1, O2, O3, O4, O5 = o
+                        O1, O2, O3, O4, O5, O6 = o
+                        
+                        # =========================================================
+                        # OUTPUT 6: RESTING CONTROL (NEW v3.1)
+                        # =========================================================
+                        # BIOINSPIRED: Brain can control rest/wake state
+                        # -1 = force active (override circadian rest tendency)
+                        #  0 = normal (follow circadian/instinct)
+                        #  1 = rest (enter rest mode if conditions allow)
+                        rest_override_thresh = getattr(a.net.params, 'brain_rest_override_threshold', 0.3)
+                        if O6 == 1:
+                            # Brain wants to rest - allow if food is adequate
+                            if a.food > StartFood * rest_override_thresh:
+                                a.is_resting = True
+                                # Resting elevates serotonin (consolidation/sleep)
+                                a.net.neuromodulators['serotonin'] = min(2.0, 
+                                    a.net.neuromodulators.get('serotonin', 0.12) + 0.02)
+                        elif O6 == -1:
+                            # Brain forces active state - override any rest tendency
+                            a.is_resting = False
+                            # Waking increases norepinephrine (alertness)
+                            a.net.neuromodulators['norepinephrine'] = min(2.0,
+                                a.net.neuromodulators.get('norepinephrine', 0.12) + 0.01)
+                        # O6 == 0: Follow normal circadian/instinct behavior (no override)
+                        
+                        # Temperature affects movement urgency (BIOINSPIRED: thermoregulation)
+                        temp_movement_mod = 1.0
+                        if getattr(a, 'body_temperature', 37.0) < getattr(a.net.params, 'temp_cold_threshold', 35.5):
+                            # Cold NxErs are more likely to move (generate heat)
+                            temp_movement_mod = 1.0 + getattr(a.net.params, 'temp_movement_bonus', 0.15)
+                            if a.is_resting:
+                                # Too cold to rest
+                                a.is_resting = False
+                        elif getattr(a, 'body_temperature', 37.0) > getattr(a.net.params, 'temp_hot_threshold', 38.5):
+                            # Hot NxErs prefer to rest (reduce heat generation)
+                            temp_movement_mod = 0.7
+                            if O6 != -1:  # Unless brain forces active
+                                a.is_resting = True
                         
                         dx = -O1; dy = -O2
+                        # Apply temperature-based movement modification
+                        if abs(dx) > 0: dx = int(dx * temp_movement_mod) if temp_movement_mod > 1 else dx
+                        if abs(dy) > 0: dy = int(dy * temp_movement_mod) if temp_movement_mod > 1 else dy
                         a.heading = get_heading_from_move(dx, dy, a.heading)
                         a._pending_move = (dx, dy, O3, O4, O5)
                         
@@ -1627,16 +1759,28 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 data_logger.log_nxer_event(step_tick, 'proprioceptron_forced_turn', a.id, 
                                     {'old_heading': brain_heading, 'new_heading': new_heading})
 
+                # Track successful moves for proprioception input
+                for a in nxers.values():
+                    if not a.alive: continue
+                    if not hasattr(a, '_consecutive_successful_moves'):
+                        a._consecutive_successful_moves = 0
+
                 # --- D. Resolve Agent Interactions ---
                 intents = []; move_target = {}
                 for a in nxers.values():
                     if not a.alive: continue
-                    # Skip movement attempts if resting (NEW v3.0)
-                    if getattr(a, 'is_resting', False) and random.random() < 0.8:
-                        # 80% chance to skip movement while resting
+                    # Skip movement attempts if resting (UPDATED v3.1: Resting behavior now brain-influenced)
+                    rest_skip_chance = 0.8
+                    if getattr(a, 'is_resting', False):
+                        # Check if brain is forcing active
+                        if len(a.last_outputs) > 5 and a.last_outputs[5] == -1:
+                            rest_skip_chance = 0.0  # Brain overrides rest
+                    if getattr(a, 'is_resting', False) and random.random() < rest_skip_chance:
                         continue
                     pm = getattr(a, "_pending_move", None)
-                    std_input = (-1, 0, (1 if world.terrain(a.pos) == T_LAND else (0 if world.terrain(a.pos) == T_SEA else -1)), 0, -1, -1)
+                    # UPDATED v3.1: Standard input now 9 values
+                    terrain_val = (1 if world.terrain(a.pos) == T_LAND else (0 if world.terrain(a.pos) == T_SEA else -1))
+                    std_input = (-1, 0, terrain_val, 0, -1, -1, 0, 0, 0)
                     if pm is None: a.last_inputs = std_input; continue
                     
                     dx, dy, O3, O4, O5 = pm; delattr(a, "_pending_move")
@@ -1670,8 +1814,14 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         for (aid, _, _) in lst:
                             nxer = nxers[aid]
                             prev = list(nxer.last_inputs)
-                            prev[0], prev[1], prev[2] = -1, 0, -1
+                            # UPDATED v3.1: Ensure list is correct length
+                            if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
+                            prev[0], prev[1], prev[2] = -1, 0, -1  # Blocked, rock, rock terrain
+                            prev[8] = -1  # Proprioception: blocked
                             nxer.last_inputs = tuple(prev)
+                            # Track consecutive blocks
+                            if hasattr(nxer, '_consecutive_successful_moves'):
+                                nxer._consecutive_successful_moves = 0
                             
                             # =========================================================
                             # PROPRIOCEPTRON: RECORD ROCK HIT (NEW v3.0)
@@ -1687,10 +1837,14 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         is_seashore_crossing = (origin_terrain == T_LAND and tt == T_SEA) or (origin_terrain == T_SEA and tt == T_LAND)
                         if not is_seashore_crossing:
                             if tt == T_LAND and not a.can_land: 
-                                prev = list(a.last_inputs); prev[0:3] = [-1, 0, 1]; a.last_inputs = tuple(prev)
+                                prev = list(a.last_inputs)
+                                if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
+                                prev[0:3] = [-1, 0, 1]; a.last_inputs = tuple(prev)
                                 continue
                             if tt == T_SEA and not a.can_sea: 
-                                prev = list(a.last_inputs); prev[0:3] = [-1, 0, 0]; a.last_inputs = tuple(prev)
+                                prev = list(a.last_inputs)
+                                if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
+                                prev[0:3] = [-1, 0, 0]; a.last_inputs = tuple(prev)
                                 continue
                         valid_intents.append((tgt, aid, O3, O4, tt))
 
@@ -1703,8 +1857,14 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     A = nxers[aid]; B = nxers[occ]
                     if A.id == B.id: continue
                     
-                    prevA = list(A.last_inputs); prevA[0:3] = [-1, 1, (1 if world.terrain(tgt)==T_LAND else 0)]; A.last_inputs = tuple(prevA)
-                    prevB = list(B.last_inputs); prevB[0:3] = [-1, 1, (1 if world.terrain(A.pos)==T_LAND else 0)]; B.last_inputs = tuple(prevB)
+                    prevA = list(A.last_inputs)
+                    if len(prevA) < 9: prevA = list(prevA) + [0]*(9-len(prevA))
+                    prevA[0:3] = [-1, 1, (1 if world.terrain(tgt)==T_LAND else 0)]
+                    A.last_inputs = tuple(prevA)
+                    prevB = list(B.last_inputs)
+                    if len(prevB) < 9: prevB = list(prevB) + [0]*(9-len(prevB))
+                    prevB[0:3] = [-1, 1, (1 if world.terrain(A.pos)==T_LAND else 0)]
+                    B.last_inputs = tuple(prevB)
                     
                     # NEW v2.27: Serotonin Behavioral Modulation
                     ser_A = A.net.neuromodulators.get('serotonin', 0.12)
@@ -1765,7 +1925,10 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         f = foods[fid]
                         for (aid, O3, O4, tt) in lst:
                             a = nxers[aid]
-                            prev = list(a.last_inputs); prev[0:3] = [1, 0, (1 if tt == T_LAND else 0)]; a.last_inputs = tuple(prev)
+                            prev = list(a.last_inputs)
+                            if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
+                            prev[0:3] = [1, 0, (1 if tt == T_LAND else 0)]  # Found food
+                            a.last_inputs = tuple(prev)
                             if f.remaining > 0:
                                 f.progress[aid] = f.progress.get(aid, 0) + 1
                                 f.remaining -= 1; a.food += 1.0; a.stats.food_found += 1.0
@@ -1820,7 +1983,9 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             if aid in handled_swap: continue 
                             a = nxers[aid]; b = nxers.get(occ)
                             if not b: continue
-                            prev = list(a.last_inputs); prev[0:3] = [-1, 1, (1 if tt == T_LAND else 0)]; a.last_inputs = tuple(prev)
+                            prev = list(a.last_inputs)
+                            if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
+                            prev[0:3] = [-1, 1, (1 if tt == T_LAND else 0)]; a.last_inputs = tuple(prev)
                             if not b.alive or a.id == b.id: continue
                             if (a.mating_intent_until_tick > step_tick and b.mating_intent_until_tick > step_tick and can_mate(a, b, step_tick)):
                                 a.mating_with = b.id; b.mating_with = a.id
@@ -1864,7 +2029,9 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         for (aid, O3, O4, tt) in want:
                             if aid == winner[0]: continue
                             a = nxers[aid]
-                            prev = list(a.last_inputs); prev[0:3] = [-1, 1, (1 if tt == T_LAND else 0)]; a.last_inputs = tuple(prev)
+                            prev = list(a.last_inputs)
+                            if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
+                            prev[0:3] = [-1, 1, (1 if tt == T_LAND else 0)]; a.last_inputs = tuple(prev)
                             a._last_O4 = O4
                     elif want:
                         (aid, O3, O4, tt) = want[0]
@@ -1889,7 +2056,29 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 prop.record_successful_move(a.heading)
                         a.pos = tgt
                         occupied.add(a.pos); a.visited.add(a.pos); a.stats.explored = len(a.visited)
-                        prev = list(a.last_inputs); prev[0:3] = [-1, 0, (1 if tt == T_LAND else 0)]; a.last_inputs = tuple(prev)
+                        
+                        # Track successful moves for proprioception
+                        if hasattr(a, '_consecutive_successful_moves'):
+                            a._consecutive_successful_moves += 1
+                        else:
+                            a._consecutive_successful_moves = 1
+                        
+                        # Record successful move in proprioceptron
+                        prop = getattr(a, 'proprioceptron', None)
+                        if prop is not None:
+                            prop.record_successful_move(a.heading)
+                            # Update proprioception input to reflect clear path
+                            prev = list(a.last_inputs)
+                            if len(prev) >= 9:
+                                prev[8] = 1 if a._consecutive_successful_moves >= 3 else 0
+                                a.last_inputs = tuple(prev)
+                        
+                        # Movement succeeded: Update last_inputs to reflect successful movement
+                        terrain_here = world.terrain(a.pos)
+                        prev = list(a.last_inputs)
+                        if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
+                        prev[0:3] = [0, 0, (1 if terrain_here == T_LAND else 0)]
+                        a.last_inputs = tuple(prev)
                         a.food -= 0.1
                         if a.food <= 0 and a.alive:
                             a.alive = False; a.died_ts = time.time(); deaths_count += 1

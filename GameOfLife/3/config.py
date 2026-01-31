@@ -112,11 +112,28 @@ class NetworkParameters:
     """
     # --- General Network Architecture ---
     network_name: str = "Neuraxon NxEr"
-    # UPDATED: 3 original + Hunger, Sight, Smell
-    num_input_neurons: int = 6  
+    # UPDATED v3.1: 6 original + DayNight, Temperature, Proprioception = 9 inputs
+    # Input neurons (trinary -1/0/1):
+    #   0: Movement result (-1=blocked, 0=moved, 1=food found)
+    #   1: Terrain encounter (-1=rock, 0=empty, 1=nxer present)
+    #   2: Terrain type (-1=rock, 0=sea, 1=land)
+    #   3: Hunger (-1=starving, 0=normal, 1=satiated) 
+    #   4: Sight (-1=enemy/nothing, 0=clan/neutral, 1=food)
+    #   5: Smell (-1=nothing, 0=nxer nearby, 1=food nearby)
+    #   6: DayNight (-1=night, 0=transition dawn/dusk, 1=day)
+    #   7: Temperature (-1=cold/hypothermic, 0=normal, 1=hot/hyperthermic)
+    #   8: Proprioception (-1=repeatedly blocked, 0=normal, 1=clear path history)
+    num_input_neurons: int = 9  
     num_hidden_neurons: int = 10 
-    # UPDATED: 4 original + Give Food
-    num_output_neurons: int = 5 
+    # UPDATED v3.1: 5 original + Resting = 6 outputs
+    # Output neurons (trinary -1/0/1):
+    #   0: Move X (-1=west, 0=stay, 1=east)
+    #   1: Move Y (-1=north, 0=stay, 1=south)
+    #   2: Social (-1=aggressive/steal, 0=neutral, 1=friendly)
+    #   3: Mate intent (-1=reject, 0=neutral, 1=seek mate)
+    #   4: Give food (-1=take, 0=neutral, 1=give to clan)
+    #   5: Resting (-1=force active/wake, 0=normal, 1=rest/sleep)
+    num_output_neurons: int = 6 
     
     # --- Temporal Dynamics & Simulation ---
     dt: float = 1.0 
@@ -252,9 +269,22 @@ class NetworkParameters:
     temperature_neural_sensitivity: float = 0.1  # How much temp affects firing
     temperature_metabolic_q10: float = 2.0  # Q10 coefficient for metabolism
     
-    # --- Proprioceptron Parameters (NEW v3.0) ---
+    # --- Proprioceptron Parameters (UPDATED v3.1) ---
     proprioceptron_rock_memory: int = 5
     proprioceptron_force_turn_threshold: int = 3
+    proprioceptron_clear_path_threshold: int = 5  # Consecutive successful moves for "clear path" signal
+    
+    # --- Brain-Instinct Balance (NEW v3.1) ---
+    # BIOINSPIRED: Balance between learned brain outputs and instinctive survival behaviors
+    brain_movement_base_weight: float = 0.7  # How much brain controls movement vs instinct
+    brain_rest_override_threshold: float = 0.3  # Food level below which rest is overridden
+    circadian_rest_tendency: float = 0.7  # Base probability of resting during night phase
+    
+    # --- Temperature Behavioral Thresholds (NEW v3.1) ---
+    temp_cold_threshold: float = 35.5  # Below this = hypothermic signal
+    temp_hot_threshold: float = 38.5   # Above this = hyperthermic signal
+    temp_movement_bonus: float = 0.15  # Extra movement when cold (to generate heat)
+    
     recovery_rate: float = 0.5 
     
     # --- Energy-Aware Threshold Homeostasis (NEW in v2.30) ---

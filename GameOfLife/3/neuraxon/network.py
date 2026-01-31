@@ -2,7 +2,6 @@
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-
 import math
 import random
 import cmath
@@ -26,8 +25,12 @@ class NeuraxonNetwork:
     """
     def __init__(self, params: Optional[NetworkParameters] = None):
         self.params = params or NetworkParameters()
+        # UPDATED v3.01: Input neurons now include DayNight, Temperature, Proprioception
+        # Indices: 0-2=physical, 3=hunger, 4=sight, 5=smell, 6=daynight, 7=temp, 8=proprio
         self.input_neurons: List[Neuraxon] = []
         self.hidden_neurons: List[Neuraxon] = []
+        # UPDATED v3.01: Output neurons now include Resting
+        # Indices: 0=MoveX, 1=MoveY, 2=Social, 3=Mate, 4=GiveFood, 5=Resting
         self.output_neurons: List[Neuraxon] = []
         self.all_neurons: List[Neuraxon] = []
         self.synapses: List[Synapse] = []
@@ -745,14 +748,28 @@ class NeuraxonNetwork:
             circle.mutate()
             pruned_ids = circle.prune_unfit_neurons()            
     
-    def set_input_states(self, states: List[int]):
-        """Clamps the input neurons to the given trinary states."""
-        for i, s in enumerate(states[:len(self.input_neurons)]):
-            self.input_neurons[i].set_state(s)
+    def set_input_states(self, input_vector: List[int]):
+        """
+        Clamps the input neuron states to the provided trinary values.
+        UPDATED v3.1: input_vector should have 9 values in {-1, 0, 1}:
+        [Movement, Encounter, Terrain, Hunger, Sight, Smell, DayNight, Temperature, Proprioception]
+        """
+        # Ensure we have the right number of inputs
+        while len(input_vector) < len(self.input_neurons):
+            input_vector = list(input_vector) + [0]
+        for i, neuron in enumerate(self.input_neurons):
+            if i < len(input_vector):
+                neuron.set_state(input_vector[i])
+            else:
+                neuron.set_state(0)
     
     def get_output_states(self) -> List[int]:
-        """Returns the current trinary states of all active output neurons."""
-        return [n.trinary_state for n in self.output_neurons if n.is_active]
+        """
+        Returns the current trinary states of all output neurons.
+        UPDATED v3.1: Returns 6 values:
+        [MoveX, MoveY, Social, MateIntent, GiveFood, Resting]
+        """
+        return [n.trinary_state for n in self.output_neurons]
     
     def get_energy_status(self) -> Dict[str, float]:
         """Returns a summary of the network's current energy state."""
@@ -786,7 +803,11 @@ class NeuraxonNetwork:
    
     def to_dict(self) -> dict:
         """Serializes the entire network state into a single dictionary."""
-        return {'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 
+        return {
+            'version': '3.1',  # UPDATED v3.1
+            'num_inputs': len(self.input_neurons),
+            'num_outputs': len(self.output_neurons),
+            'parameters': asdict(self.params), 'neurons': {'input': [n.to_dict() for n in self.input_neurons], 'hidden': [n.to_dict() for n in self.hidden_neurons], 'output': [n.to_dict() for n in self.output_neurons]}, 'synapses': [s.to_dict() for s in self.synapses], 'neuromodulators': self.neuromodulators, 'time': self.time, 'step_count': self.step_count, 'energy_consumed': self.total_energy_consumed, 
         'branching_ratio': self.branching_ratio, 
         'modulator_grid': self.modulator_grid.tolist(),  # Updated Save states in v 2.1
         'oscillator_phase_offsets': self.oscillator_phase_offsets,  # Updated Save states in v 2.1
@@ -802,6 +823,17 @@ class NeuraxonNetwork:
 def _rebuild_net_from_dict(d: dict) -> NeuraxonNetwork:
     """A utility function to reconstruct a complete NeuraxonNetwork object from a dictionary."""
     params = NetworkParameters(**d['parameters'])
+    
+    # UPDATED v3.1: Ensure correct input/output counts
+    params.num_input_neurons = d.get('num_inputs', 9)  # Default to v3.1 count
+    params.num_output_neurons = d.get('num_outputs', 6)  # Default to v3.1 count
+    
+    # Handle loading older saves with fewer inputs/outputs
+    if params.num_input_neurons < 9:
+        params.num_input_neurons = 9
+    if params.num_output_neurons < 6:
+        params.num_output_neurons = 6
+    
     net = NeuraxonNetwork(params)
     
     # Helper function to apply saved state to a list of neurons.

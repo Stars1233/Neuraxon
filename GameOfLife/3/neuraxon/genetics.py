@@ -2,7 +2,6 @@
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-
 import random
 import math
 from typing import Any, Tuple, Optional
@@ -184,9 +183,9 @@ def Inheritance(father: 'NxEr', mother: 'NxEr') -> 'NeuraxonNetwork':
     
     # --- General Network Architecture ---
     child_params.network_name = pick(father_params.network_name, mother_params.network_name)
-    child_params.num_input_neurons = pick(father_params.num_input_neurons, mother_params.num_input_neurons)
+    child_params.num_input_neurons = 9  # FIXED v3.1: Always 9 inputs
     child_params.num_hidden_neurons = blend_int(father_params.num_hidden_neurons, mother_params.num_hidden_neurons)
-    child_params.num_output_neurons = pick(father_params.num_output_neurons, mother_params.num_output_neurons)
+    child_params.num_output_neurons = 6  # FIXED v3.1: Always 6 outputs
     
     # --- Temporal Dynamics & Simulation ---
     child_params.dt = pick_or_blend(father_params.dt, mother_params.dt)
@@ -270,6 +269,34 @@ def Inheritance(father: 'NxEr', mother: 'NxEr') -> 'NeuraxonNetwork':
     child_params.plasticity_energy_cost = pick_or_blend(father_params.plasticity_energy_cost, mother_params.plasticity_energy_cost)
     child_params.metabolic_rate = blend_bounded(father_params.metabolic_rate, mother_params.metabolic_rate, 0.4, 1.8)
     child_params.recovery_rate = pick_or_blend(father_params.recovery_rate, mother_params.recovery_rate)
+    
+    # --- Proprioceptron Parameters (UPDATED v3.1) ---
+    child_params.proprioceptron_rock_memory = blend_int(father_params.proprioceptron_rock_memory, mother_params.proprioceptron_rock_memory)
+    child_params.proprioceptron_force_turn_threshold = blend_int(father_params.proprioceptron_force_turn_threshold, mother_params.proprioceptron_force_turn_threshold)
+    child_params.proprioceptron_clear_path_threshold = blend_int(
+        getattr(father_params, 'proprioceptron_clear_path_threshold', 5),
+        getattr(mother_params, 'proprioceptron_clear_path_threshold', 5)
+    )
+    
+    # --- NEW v3.1: Brain-Instinct Balance ---
+    child_params.brain_movement_base_weight = blend_bounded(
+        getattr(father_params, 'brain_movement_base_weight', 0.7),
+        getattr(mother_params, 'brain_movement_base_weight', 0.7), 0.3, 0.95)
+    child_params.brain_rest_override_threshold = blend_bounded(
+        getattr(father_params, 'brain_rest_override_threshold', 0.3),
+        getattr(mother_params, 'brain_rest_override_threshold', 0.3), 0.15, 0.5)
+    child_params.circadian_rest_tendency = blend_bounded(
+        getattr(father_params, 'circadian_rest_tendency', 0.7),
+        getattr(mother_params, 'circadian_rest_tendency', 0.7), 0.4, 0.9)
+    child_params.temp_cold_threshold = blend_bounded(
+        getattr(father_params, 'temp_cold_threshold', 35.5),
+        getattr(mother_params, 'temp_cold_threshold', 35.5), 34.0, 36.5)
+    child_params.temp_hot_threshold = blend_bounded(
+        getattr(father_params, 'temp_hot_threshold', 38.5),
+        getattr(mother_params, 'temp_hot_threshold', 38.5), 37.5, 40.0)
+    child_params.temp_movement_bonus = blend_bounded(
+        getattr(father_params, 'temp_movement_bonus', 0.15),
+        getattr(mother_params, 'temp_movement_bonus', 0.15), 0.05, 0.3)
     
     # --- Homeostasis ---
     child_params.target_firing_rate = blend_bounded(father_params.target_firing_rate, mother_params.target_firing_rate, 0.02, 0.3)

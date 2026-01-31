@@ -13,13 +13,20 @@ if TYPE_CHECKING:
     from neuraxon.network import NeuraxonNetwork
 
 # ============================================================================
-# PROPRIOCEPTRON (NEW v3.0)
+# VERSION CONSTANTS (NEW v3.01)
+# ============================================================================
+VERSION = "3.01"
+NUM_INPUT_NEURONS = 9   # Movement, Terrain, TerrainType, Hunger, Sight, Smell, DayNight, Temperature, Proprioception
+NUM_OUTPUT_NEURONS = 6  # MoveX, MoveY, Social, MateIntent, GiveFood, Resting
+
+# ============================================================================
+# PROPRIOCEPTRON (NEW v3.01)
 # ============================================================================
 # BIOINSPIRED: Proprioception is the sense of body position and movement.
 # Real organisms use proprioceptive feedback to avoid obstacles and adjust
 # movement strategies. This tracks collision history to prevent "stuck" behavior.
 
-@dataclass
+@dataclass 
 class Proprioceptron:
     """
     Tracks sensory feedback about the NxEr's own body state and collisions.
@@ -31,6 +38,8 @@ class Proprioceptron:
     last_successful_heading: int = 0  # Last heading that resulted in movement
     total_rock_hits: int = 0  # Lifetime rock collision count
     forced_turn_count: int = 0  # How many times we forced a direction change
+    successful_move_streak: int = 0  # Consecutive successful moves (NEW v3.1)
+    last_move_result: int = 0  # -1=blocked, 0=neutral, 1=success (NEW v3.1)
     
     def record_rock_hit(self, heading: int, memory_size: int = 5):
         """Record a rock collision at the given heading."""
@@ -39,11 +48,15 @@ class Proprioceptron:
             self.rock_hit_history.pop(0)
         self.consecutive_blocked += 1
         self.total_rock_hits += 1
+        self.successful_move_streak = 0  # Reset streak on block
+        self.last_move_result = -1
     
     def record_successful_move(self, heading: int):
         """Record a successful movement."""
         self.consecutive_blocked = 0
         self.last_successful_heading = heading
+        self.successful_move_streak += 1
+        self.last_move_result = 1
     
     def should_force_turn(self, current_heading: int, threshold: int = 3) -> bool:
         """
@@ -56,6 +69,22 @@ class Proprioceptron:
         # Check if current heading is frequently blocked
         recent_hits_at_heading = sum(1 for h in self.rock_hit_history if h == current_heading)
         return recent_hits_at_heading >= threshold
+    
+    def get_proprioception_signal(self, clear_threshold: int = 5) -> int:
+        """
+        Get trinary proprioception signal for brain input (NEW v3.1).
+        BIOINSPIRED: Provides body awareness of movement success/failure.
+        
+        Returns:
+            -1: Repeatedly blocked (obstacle ahead)
+             0: Normal (mixed history)
+             1: Clear path (consistent successful movement)
+        """
+        if self.consecutive_blocked >= 2:
+            return -1
+        if self.successful_move_streak >= clear_threshold:
+            return 1
+        return 0
     
     def get_suggested_heading(self, current_heading: int, num_directions: int = 8) -> int:
         """
@@ -115,9 +144,9 @@ class NxEr:
     alive: bool = True
     born_ts: float = field(default_factory=time.time)
     died_ts: Optional[float] = None
-    # UPDATED: 6 inputs now
-    last_inputs: Tuple[float, ...] = (0, 0, 0, 0, 0, 0) 
-    last_outputs: Tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
+    # UPDATED v3.1: 9 inputs, 6 outputs
+    last_inputs: Tuple[float, ...] = (0, 0, 0, 0, 0, 0, 0, 0, 0) 
+    last_outputs: Tuple[int, ...] = (0, 0, 0, 0, 0, 0)
     ticks_per_action: int = 1
     tick_accum: int = 0
     harvesting: Optional[int] = None
@@ -147,9 +176,10 @@ class NxEr:
     is_resting: bool = False        # Whether NxEr is in rest/sleep mode
     last_activity_tick: int = 0     # For activity-based temperature
     
-    # --- NEW v3.0: Proprioceptron ---
+    # --- Proprioceptron (UPDATED v3.0  1) ---
     proprioceptron: Proprioceptron = field(default_factory=Proprioceptron)
     brain_movement_weight: float = 0.5  # How much brain outputs influence movement vs instinct
+    _consecutive_successful_moves: int = 0  # Track for proprioception input (NEW v3.01)
 
 @dataclass
 class Food:
