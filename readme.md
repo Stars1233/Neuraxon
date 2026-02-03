@@ -13,15 +13,17 @@
 
 <br>
 
-## 🚀 Neuraxon Game of Life v3.01 Released!
+## 🚀 Neuraxon Game of Life v3.2 Released!
 
 **Bio-Physical Coupling: Circadian Rhythms, Thermodynamics & Proprioception.**
 
 Experience the new **3D WebGL Lite Version** at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife).
 
-### 📅 Change Log
+### 📅 Change Log (Research Version)
+**February 2nd 2026: v3.2**
+Several updates for the new senses & circadian cycle
 **January 31st 2026: v3.01**
-Neuraxon Game of Life v.3.01 (Research Version): Updated Input and Output Neurons
+Updated Input and Output Neurons
 - NUM_INPUT_NEURONS = 9   # Movement, Terrain, TerrainType, Hunger, Sight, Smell, DayNight, Temperature, Proprioception
 - NUM_OUTPUT_NEURONS = 6  # MoveX, MoveY, Social, MateIntent, GiveFood, Resting<br>
 
@@ -474,4 +476,5 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
