@@ -2,7 +2,6 @@
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-
 import os
 import sys
 import time
@@ -589,6 +588,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
             is_resting=False,
             proprioceptron=Proprioceptron()
         )
+        
+        # v3.2: Apply inherited metabolic preferences
+        inherited_meta = getattr(child_net, '_inherited_metadata', {})
+        if inherited_meta:
+            child.temperature_tolerance_cold = inherited_meta.get('temperature_tolerance_cold', 35.5)
+            child.temperature_tolerance_hot = inherited_meta.get('temperature_tolerance_hot', 38.5)
+            child.resting_metabolism_multiplier = inherited_meta.get('resting_metabolism_multiplier', 0.3)
         
         transfer = min(5.0, min(A.food / 2, B.food / 2))
         A.food -= transfer
@@ -1187,6 +1193,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                 heading=heading, 
                 clan_id=clan_id
             )
+            # v3.2: Inherit metabolic preferences from parent
+            if hasattr(a, 'temperature_tolerance_cold'):
+                nx.temperature_tolerance_cold = a.temperature_tolerance_cold * random.uniform(0.98, 1.02)
+            if hasattr(a, 'temperature_tolerance_hot'):
+                nx.temperature_tolerance_hot = a.temperature_tolerance_hot * random.uniform(0.98, 1.02)
+            if hasattr(a, 'resting_metabolism_multiplier'):
+                nx.resting_metabolism_multiplier = a.resting_metabolism_multiplier * random.uniform(0.95, 1.05)
             used_colors.add(nx.color)
             config._next_nxer_id += 1
             nxers[nx.id] = nx
@@ -1214,6 +1227,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
 
     FIXED_DT = 1.0 / GlobalTimeSteps
     METABOLIC_RAMP_PER_SEC = 10  # Metabolic Ramp: +1000%/sec idle (atrophy) for the new v2.23 metrics
+    RESTING_METABOLISM_MULT = 0.3
     accumulator = 0.0
     data_logger = get_data_logger()
     
@@ -1605,6 +1619,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             current_temp = getattr(a, 'body_temperature', 37.0)
                             cold_thresh = getattr(a.net.params, 'temp_cold_threshold', 35.5)
                             hot_thresh = getattr(a.net.params, 'temp_hot_threshold', 38.5)
+                            # v3.2: Use inherited individual thresholds if available
+                            cold_thresh = getattr(a, 'temperature_tolerance_cold', 
+                                getattr(a.net.params, 'temp_cold_threshold', 35.5))
+                            hot_thresh = getattr(a, 'temperature_tolerance_hot',
+                                getattr(a.net.params, 'temp_hot_threshold', 38.5))
                             if current_temp < cold_thresh:
                                 temp_val = -1  # Hypothermic - need to move/seek warmth
                             elif current_temp > hot_thresh:
@@ -1649,8 +1668,15 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         a._prev_food = a.food
                         
                         # Apply Metabolic Ramp directly to the live object
+                        # v3.2: Resting NxErs have reduced metabolism (BIOINSPIRED: energy conservation)
                         idle_seconds = max(0.0, (step_tick - a.last_move_tick) / GlobalTimeSteps)
-                        a.net.params.metabolic_rate *= (1.0 + METABOLIC_RAMP_PER_SEC * idle_seconds)
+                        if getattr(a, 'is_resting', False):
+                            # Resting: reduced metabolic rate, no idle penalty
+                            resting_mult = getattr(a, 'resting_metabolism_multiplier', RESTING_METABOLISM_MULT)
+                            a.net.params.metabolic_rate *= resting_mult
+                        else:
+                            # Active: normal metabolic ramp for idle atrophy
+                            a.net.params.metabolic_rate *= (1.0 + METABOLIC_RAMP_PER_SEC * idle_seconds)
                         
                         if a.dopamine_boost_ticks > 0:
                             nd = a.net.neuromodulators
@@ -1764,18 +1790,30 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     if not a.alive: continue
                     if not hasattr(a, '_consecutive_successful_moves'):
                         a._consecutive_successful_moves = 0
+                        
+                # v3.2: Update resting body temperature (drops when resting)
+                for a in nxers.values():
+                    if not a.alive: continue
+                    if getattr(a, 'is_resting', False):
+                        temp_drop = getattr(a.net.params, 'resting_temp_drop_rate', 0.1) * FIXED_DT
+                        a.body_temperature = max(35.0, getattr(a, 'body_temperature', 37.0) - temp_drop)
 
                 # --- D. Resolve Agent Interactions ---
                 intents = []; move_target = {}
                 for a in nxers.values():
                     if not a.alive: continue
                     # Skip movement attempts if resting (UPDATED v3.1: Resting behavior now brain-influenced)
+                    # v3.2: Resting still consumes food but at reduced rate
                     rest_skip_chance = 0.8
                     if getattr(a, 'is_resting', False):
                         # Check if brain is forcing active
                         if len(a.last_outputs) > 5 and a.last_outputs[5] == -1:
                             rest_skip_chance = 0.0  # Brain overrides rest
                     if getattr(a, 'is_resting', False) and random.random() < rest_skip_chance:
+                        resting_mult = getattr(a, 'resting_metabolism_multiplier', RESTING_METABOLISM_MULT)
+                        a.food -= 0.005 * resting_mult  # Minimal food consumption while resting
+                        if a.food <= 0:
+                            a.is_resting = False  # Force wake if starving
                         continue
                     pm = getattr(a, "_pending_move", None)
                     # UPDATED v3.1: Standard input now 9 values
@@ -1818,6 +1856,11 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
                             prev[0], prev[1], prev[2] = -1, 0, -1  # Blocked, rock, rock terrain
                             prev[8] = -1  # Proprioception: blocked
+                            # v3.2: Update proprioceptron for blocked movement
+                            prop = getattr(nxer, 'proprioceptron', None)
+                            if prop:
+                                prop.record_rock_hit(nxer.heading)
+                                nxer._consecutive_successful_moves = 0
                             nxer.last_inputs = tuple(prev)
                             # Track consecutive blocks
                             if hasattr(nxer, '_consecutive_successful_moves'):
@@ -1927,7 +1970,15 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             a = nxers[aid]
                             prev = list(a.last_inputs)
                             if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
-                            prev[0:3] = [1, 0, (1 if tt == T_LAND else 0)]  # Found food
+                            # v3.2: FIX - Input 0 = 1 only when food found, 0 for normal success
+                            prev[0] = 1  # Food found = +1
+                            prev[1] = 0  # No encounter (food, not NxEr)
+                            prev[2] = (1 if tt == T_LAND else 0)  # Terrain type
+                            # v3.2: Update proprioceptron for food success
+                            prop = getattr(a, 'proprioceptron', None)
+                            if prop:
+                                prop.record_successful_move(a.heading)
+                                a._consecutive_successful_moves = prop.successful_move_streak
                             a.last_inputs = tuple(prev)
                             if f.remaining > 0:
                                 f.progress[aid] = f.progress.get(aid, 0) + 1
@@ -2075,9 +2126,18 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         
                         # Movement succeeded: Update last_inputs to reflect successful movement
                         terrain_here = world.terrain(a.pos)
+                        # v3.2: FIX - Input 0 = 0 for successful move (not blocked, not food)
+                        # Previously this was being overwritten incorrectly
                         prev = list(a.last_inputs)
                         if len(prev) < 9: prev = list(prev) + [0]*(9-len(prev))
-                        prev[0:3] = [0, 0, (1 if terrain_here == T_LAND else 0)]
+                        prev[0] = 0  # Normal successful move = 0 (not blocked=-1, not food=+1)
+                        prev[1] = 0  # Empty cell encountered
+                        prev[2] = (1 if terrain_here == T_LAND else 0)  # Terrain type
+                        # v3.2: Update proprioceptron for movement success
+                        prop = getattr(a, 'proprioceptron', None)
+                        if prop:
+                            prop.record_successful_move(a.heading)
+                            a._consecutive_successful_moves = prop.successful_move_streak
                         a.last_inputs = tuple(prev)
                         a.food -= 0.1
                         if a.food <= 0 and a.alive:
@@ -2086,6 +2146,35 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             data_logger.update_nxer_stats(a)
                             if a.pos in occupied: occupied.discard(a.pos)
                             push_effect('skull', a.pos)
+                
+                # --- Temperature updates from activity (v3.1) ---
+                winners_set = {aid for (aid, _, _) in winners}
+                for a in nxers.values():
+                    if not a.alive: continue
+                    aid = a.id
+                    if aid in ate_food_this_tick:
+                        # Eating generates heat (thermogenic effect)
+                        # v3.2: Increased heat gain from food (thermogenesis)
+                        food_gain = getattr(a.net.params, 'temp_food_gain_v32', 0.7)
+                        a.body_temperature = min(41.0, getattr(a, 'body_temperature', 37.0) + food_gain)
+                    elif getattr(a, 'is_resting', False):
+                        # Resting: temperature drops toward baseline minus circadian offset
+                        # Already handled above, skip additional activity gain
+                        pass
+                    elif aid in winners_set:
+                        # Movement generates heat
+                        # v3.2: Increased heat gain from movement
+                        activity_gain = getattr(a.net.params, 'temp_activity_gain_v32', 0.5)
+                        a.body_temperature = min(41.0, getattr(a, 'body_temperature', 37.0) + activity_gain)
+                    
+                    # v3.2: Apply temperature decay (slower rate for better dynamics)
+                    decay_rate = getattr(a.net.params, 'temp_decay_rate_v32', 0.015)
+                    baseline = 37.0 + random.uniform(-0.2, 0.2)  # Small individual variance
+                    current_temp = getattr(a, 'body_temperature', 37.0)
+                    if current_temp > baseline:
+                        a.body_temperature = max(baseline, current_temp - decay_rate)
+                    elif current_temp < baseline:
+                        a.body_temperature = min(baseline, current_temp + decay_rate * 0.5)  # Slower warm-up
                 
                 try_respawns(step_tick)
 

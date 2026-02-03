@@ -2,7 +2,6 @@
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-
 import time
 import json
 import math
@@ -61,7 +60,7 @@ class DataLogger:
         self.game_metadata = {
             'start_timestamp': datetime.now().isoformat(),
             'log_level': self.log_level,
-            'version': '3.1'
+            'version': '3.2'
         }
         
         self.summary = {
@@ -300,6 +299,33 @@ class DataLogger:
             'pac_theta_gamma': [],
             'pac_delta_theta': [],
             'mean_phase_velocity': [],
+            
+            # v3.2: Resting/Circadian aggregated metrics
+            'resting_fraction': [],
+            'proprioceptron_forced_turns_total': [],
+            'proprioceptron_successful_streak_mean': [],
+            'temperature_circadian_correlation': [],
+            
+            # v3.2: I/O TIMESERIES
+            'input_0_movement_mean': [],
+            'input_1_encounter_mean': [],
+            'input_2_terrain_mean': [],
+            'input_3_hunger_mean': [],
+            'input_4_sight_mean': [],
+            'input_5_smell_mean': [],
+            'input_6_daynight_mean': [],
+            'input_7_temperature_mean': [],
+            'input_8_proprioception_mean': [],
+            'output_0_movex_mean': [],
+            'output_1_movey_mean': [],
+            'output_2_social_mean': [],
+            'output_3_mate_mean': [],
+            'output_4_givefood_mean': [],
+            'output_5_resting_mean': [],
+            # v3.2: Metabolism context
+            'mean_food_level': [],
+            'food_consumption_rate': [],
+            'mean_body_temperature': [],
             
             # ============================================================
             # NEW:  Aigarth/ITU Metrics
@@ -937,6 +963,77 @@ class DataLogger:
             self.time_series['mean_phase_velocity'].append(np.mean(phase_velocities))
         else:
             self.time_series['mean_phase_velocity'].append(0.0)
+        
+        # === v3.2: I/O TIMESERIES ===
+        all_inputs = []
+        all_outputs = []
+        for a in alive_nxers:
+            if hasattr(a, 'last_inputs') and len(a.last_inputs) >= 9:
+                all_inputs.append(list(a.last_inputs))
+            if hasattr(a, 'last_outputs') and len(a.last_outputs) >= 6:
+                all_outputs.append(list(a.last_outputs))
+        
+        input_keys = ['input_0_movement_mean', 'input_1_encounter_mean', 'input_2_terrain_mean',
+                      'input_3_hunger_mean', 'input_4_sight_mean', 'input_5_smell_mean',
+                      'input_6_daynight_mean', 'input_7_temperature_mean', 'input_8_proprioception_mean']
+        if all_inputs:
+            inputs_arr = np.array(all_inputs)
+            for i, key in enumerate(input_keys):
+                self.time_series[key].append(float(np.mean(inputs_arr[:, i])))
+        else:
+            for key in input_keys:
+                self.time_series[key].append(0.0)
+        
+        output_keys = ['output_0_movex_mean', 'output_1_movey_mean', 'output_2_social_mean',
+                       'output_3_mate_mean', 'output_4_givefood_mean', 'output_5_resting_mean']
+        if all_outputs:
+            outputs_arr = np.array(all_outputs)
+            for i, key in enumerate(output_keys):
+                self.time_series[key].append(float(np.mean(outputs_arr[:, i])))
+        else:
+            for key in output_keys:
+                self.time_series[key].append(0.0)
+        
+        # === v3.2: METABOLISM CONTEXT ===
+        resting_count = 0
+        total_forced_turns = 0
+        successful_streak_sum = 0
+        streak_count = 0
+        temps = []
+        phases = []
+        food_levels = []
+        
+        for a in alive_nxers:
+            if getattr(a, 'is_resting', False):
+                resting_count += 1
+            prop = getattr(a, 'proprioceptron', None)
+            if prop:
+                total_forced_turns += prop.forced_turn_count
+                successful_streak_sum += prop.successful_move_streak
+                streak_count += 1
+            temps.append(getattr(a, 'body_temperature', 37.0))
+            phases.append(getattr(a, 'circadian_phase', 0.0))
+            food_levels.append(getattr(a, 'food', 0.0))
+        
+        n_alive = max(1, len(alive_nxers))
+        self.time_series['resting_fraction'].append(resting_count / n_alive)
+        self.time_series['proprioceptron_forced_turns_total'].append(total_forced_turns)
+        self.time_series['proprioceptron_successful_streak_mean'].append(successful_streak_sum / max(1, streak_count))
+        self.time_series['mean_food_level'].append(np.mean(food_levels) if food_levels else 0.0)
+        self.time_series['mean_body_temperature'].append(np.mean(temps) if temps else 37.0)
+        
+        if len(self.time_series['mean_food_level']) >= 2:
+            prev_food = self.time_series['mean_food_level'][-2]
+            curr_food = self.time_series['mean_food_level'][-1]
+            self.time_series['food_consumption_rate'].append(prev_food - curr_food)
+        else:
+            self.time_series['food_consumption_rate'].append(0.0)
+        
+        if len(temps) >= 2 and np.std(temps) > 0 and np.std(phases) > 0:
+            corr = np.corrcoef(temps, phases)[0, 1]
+            self.time_series['temperature_circadian_correlation'].append(float(corr) if not np.isnan(corr) else 0.0)
+        else:
+            self.time_series['temperature_circadian_correlation'].append(0.0)
         
         # === ITU/AIGARTH METRICS ===
         all_itu_circles = []

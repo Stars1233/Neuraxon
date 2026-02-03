@@ -2,7 +2,6 @@
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-
 import random
 from dataclasses import dataclass, field
 from typing import Set, Dict, Optional, List, Set
@@ -105,6 +104,27 @@ TEMP_DECAY_RATE = 0.02        # Return to baseline rate
 ROCK_HIT_MEMORY = 5           # How many recent rock hits to track
 ROCK_HIT_THRESHOLD = 3        # Hits before forced direction change
 
+# v3.2: Resting metabolism constants
+RESTING_METABOLISM_MULTIPLIER = 0.3
+RESTING_TEMP_DROP_RATE = 0.1
+
+# v3.2: Temperature dynamics fix
+TEMP_ACTIVITY_GAIN_V32 = 0.5
+TEMP_FOOD_GAIN_V32 = 0.7
+TEMP_DECAY_RATE_V32 = 0.015
+
+# v3.2: Resting metabolism constants (BIOINSPIRED: torpor/sleep energy conservation)
+RESTING_METABOLISM_MULTIPLIER = 0.3  # Resting NxErs use 30% of normal metabolism
+RESTING_TEMP_DROP_RATE = 0.1  # Body temp drops slowly when resting
+RESTING_FOOD_THRESHOLD = 0.2  # Min food fraction to enter voluntary rest
+
+# v3.2: FIX - Temperature generation constants (too low before, NxErs never got hot)
+TEMP_ACTIVITY_GAIN = 0.5      # v3.2: Increased from 0.3 - heat from movement/activity
+TEMP_SOCIAL_GAIN = 0.3        # v3.2: Increased from 0.2 - heat from proximity to others
+TEMP_FOOD_GAIN = 0.7          # v3.2: Increased from 0.5 - thermogenic effect of eating
+TEMP_DECAY_RATE = 0.015       # v3.2: Reduced from 0.02 - slower return to baseline
+TEMP_BASELINE_VARIANCE = 0.5  # v3.2: Individual baseline variance (37 +/- 0.5)
+
 @dataclass
 class NetworkParameters:
     """
@@ -134,6 +154,13 @@ class NetworkParameters:
     #   4: Give food (-1=take, 0=neutral, 1=give to clan)
     #   5: Resting (-1=force active/wake, 0=normal, 1=rest/sleep)
     num_output_neurons: int = 6 
+    
+    # v3.2: Resting/Metabolism parameters
+    resting_metabolism_multiplier: float = 0.3
+    resting_temp_drop_rate: float = 0.1
+    temp_activity_gain_v32: float = 0.5
+    temp_food_gain_v32: float = 0.7
+    temp_decay_rate_v32: float = 0.015
     
     # --- Temporal Dynamics & Simulation ---
     dt: float = 1.0 

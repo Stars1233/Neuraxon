@@ -616,4 +616,22 @@ def Inheritance(father: 'NxEr', mother: 'NxEr') -> 'NeuraxonNetwork':
     child_net.step_count = 0
     child_net.total_energy_consumed = 0.0
     
+    # ==========================================================================
+    # v3.2: INHERIT METABOLIC PREFERENCES (for NxEr to copy after birth)
+    # ==========================================================================
+    child_net._inherited_metadata = {
+        'temperature_tolerance_cold': blend_bounded(
+            getattr(father, 'temperature_tolerance_cold', 35.5),
+            getattr(mother, 'temperature_tolerance_cold', 35.5),
+            34.0, 36.5, 0.05),
+        'temperature_tolerance_hot': blend_bounded(
+            getattr(father, 'temperature_tolerance_hot', 38.5),
+            getattr(mother, 'temperature_tolerance_hot', 38.5),
+            37.5, 40.0, 0.05),
+        'resting_metabolism_multiplier': blend_bounded(
+            getattr(father, 'resting_metabolism_multiplier', 0.3),
+            getattr(mother, 'resting_metabolism_multiplier', 0.3),
+            0.15, 0.5, 0.08),
+    }
+    
     return child_net

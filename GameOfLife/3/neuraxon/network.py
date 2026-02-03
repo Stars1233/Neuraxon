@@ -25,11 +25,11 @@ class NeuraxonNetwork:
     """
     def __init__(self, params: Optional[NetworkParameters] = None):
         self.params = params or NetworkParameters()
-        # UPDATED v3.01: Input neurons now include DayNight, Temperature, Proprioception
+        # UPDATED v3.1: Input neurons now include DayNight, Temperature, Proprioception
         # Indices: 0-2=physical, 3=hunger, 4=sight, 5=smell, 6=daynight, 7=temp, 8=proprio
         self.input_neurons: List[Neuraxon] = []
         self.hidden_neurons: List[Neuraxon] = []
-        # UPDATED v3.01: Output neurons now include Resting
+        # UPDATED v3.1: Output neurons now include Resting
         # Indices: 0=MoveX, 1=MoveY, 2=Social, 3=Mate, 4=GiveFood, 5=Resting
         self.output_neurons: List[Neuraxon] = []
         self.all_neurons: List[Neuraxon] = []
@@ -755,6 +755,8 @@ class NeuraxonNetwork:
         [Movement, Encounter, Terrain, Hunger, Sight, Smell, DayNight, Temperature, Proprioception]
         """
         # Ensure we have the right number of inputs
+        # v3.2: Validate input vector length matches expected (9 inputs)
+        assert len(input_vector) == self.params.num_input_neurons, f"Expected {self.params.num_input_neurons} inputs, got {len(input_vector)}"
         while len(input_vector) < len(self.input_neurons):
             input_vector = list(input_vector) + [0]
         for i, neuron in enumerate(self.input_neurons):

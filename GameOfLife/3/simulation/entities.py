@@ -2,7 +2,6 @@
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
-
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, List, Dict
@@ -13,14 +12,14 @@ if TYPE_CHECKING:
     from neuraxon.network import NeuraxonNetwork
 
 # ============================================================================
-# VERSION CONSTANTS (NEW v3.01)
+# VERSION CONSTANTS (NEW v3.1)
 # ============================================================================
-VERSION = "3.01"
+VERSION = "3.2"
 NUM_INPUT_NEURONS = 9   # Movement, Terrain, TerrainType, Hunger, Sight, Smell, DayNight, Temperature, Proprioception
 NUM_OUTPUT_NEURONS = 6  # MoveX, MoveY, Social, MateIntent, GiveFood, Resting
 
 # ============================================================================
-# PROPRIOCEPTRON (NEW v3.01)
+# PROPRIOCEPTRON (NEW v3.0)
 # ============================================================================
 # BIOINSPIRED: Proprioception is the sense of body position and movement.
 # Real organisms use proprioceptive feedback to avoid obstacles and adjust
@@ -176,10 +175,15 @@ class NxEr:
     is_resting: bool = False        # Whether NxEr is in rest/sleep mode
     last_activity_tick: int = 0     # For activity-based temperature
     
-    # --- Proprioceptron (UPDATED v3.0  1) ---
+    # --- Proprioceptron (UPDATED v3.1) ---
     proprioceptron: Proprioceptron = field(default_factory=Proprioceptron)
     brain_movement_weight: float = 0.5  # How much brain outputs influence movement vs instinct
-    _consecutive_successful_moves: int = 0  # Track for proprioception input (NEW v3.01)
+    _consecutive_successful_moves: int = 0  # Track for proprioception input (NEW v3.1)
+
+    # v3.2: Inherited metabolic preferences
+    temperature_tolerance_cold: float = 35.5  # Individual cold threshold
+    temperature_tolerance_hot: float = 38.5   # Individual hot threshold
+    resting_metabolism_multiplier: float = 0.3  # Individual resting efficiency
 
 @dataclass
 class Food:
