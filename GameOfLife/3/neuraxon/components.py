@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Neuron Components
+# Neuraxon Game of Life Neuron Components v3.3
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -177,8 +177,14 @@ class Synapse:
         self._pending_delta_w = 0.0
         
         if pre_state == 1 and post_state == 1:
-            # LTP now only occurs during Dopamine Surges (Reward)
-            delta = self.learning_rate * self.learning_rate_mod * da_high * self.pre_trace
+            # v3.3: LTP = DA-gated component + Hebbian component
+            # BIOINSPIRED: Basic Hebbian LTP occurs at coincident firing even without
+            # explicit reward — DA modulates magnitude, not gating entirely.
+            # Results96F showed LTP/LTD ratio of 0.082 — far too low for learning.
+            hebbian_frac = getattr(self.params, 'hebbian_ltp_rate', 0.3)
+            da_component = self.learning_rate * self.learning_rate_mod * da_high * self.pre_trace
+            hebbian_component = self.learning_rate * hebbian_frac * self.pre_trace * self.post_trace
+            delta = da_component + hebbian_component
             self._pending_delta_w = delta
             # FIX v2.2505: Log LTP event when delta is significant
             if delta > 0.0001 and logger.log_level >= 2:
@@ -187,13 +193,15 @@ class Synapse:
                                             delta_w=delta)
             return delta
         elif pre_state == 1 and post_state <= 0:
-            # FIX v2.2505: LTD occurs when pre fires but post does NOT respond (neutral or inhibitory)
-            # Previously required post_state == -1 (inhibitory only ~0.2%), now includes neutral (~95%)
-            # Scale LTD strength: full strength for inhibitory, reduced for neutral
-            # ACh Modulation: If high ACh and no reward (LTP), favors easier forgetting (Paper Claim)
+            # v3.3: LTD rebalanced — neutral post barely depresses, inhibitory still depresses
+            # Results96F: 92.4% of all plasticity events were LTD — far too dominant.
+            # Root cause: neutral state is ~50% of all states, and was scaled at 0.3 × full LTD.
+            # FIX: Neutral scale → 0.08, inhibitory scale → 0.6 (from 1.0/0.3)
             ach_forgetting_mult = 1.5 if ach > 0.6 else 1.0
             
-            ltd_scale = (1.0 if post_state == -1 else 0.3) * ach_forgetting_mult
+            ltd_neutral = getattr(self.params, 'ltd_neutral_scale', 0.08)
+            ltd_inhib = getattr(self.params, 'ltd_inhibitory_scale', 0.6)
+            ltd_scale = (ltd_inhib if post_state == -1 else ltd_neutral) * ach_forgetting_mult
             delta = -self.learning_rate * self.learning_rate_mod * da_low * self.pre_trace_ltd * ltd_scale
             self._pending_delta_w = delta
             # FIX v2.2505: Log LTD event when delta is significant
@@ -223,27 +231,38 @@ class Synapse:
                 dw / (i + 1) for i, dw in enumerate(neighbor_deltas[:3]))
             delta_w += neighbor_contribution
         
-        h_fast = self.pre_trace
-        h_slow = 0.5 * self.pre_trace + 0.5 * self.post_trace
+        # v3.3: Differentiate fast vs slow timescale drivers
+        # Results96F: w_fast/w_slow correlation = 0.94 — they moved in lockstep
+        # FIX: w_fast tracks pre_trace (immediate stimulus), w_slow tracks post_trace (response)
+        h_fast = self.pre_trace  # Fast: driven by presynaptic activity
+        post_frac = getattr(self.params, 'w_slow_post_trace_fraction', 0.8)
+        h_slow = (1.0 - post_frac) * self.pre_trace + post_frac * self.post_trace  # Slow: response-driven
         
         # Use localized tau_fast, tau_slow, tau_meta with saturation prevention
         # NEW v2.31: Apply hard ceiling/floor to prevent weight saturation
         max_w = self.params.max_weight_magnitude
         min_w = self.params.min_weight_magnitude
         
-        new_w_fast = self.w_fast + dt / self.tau_fast * (-self.w_fast + h_fast + delta_w * 0.3)
+        # v3.3: w_fast gets larger share of delta_w (immediate learning), w_slow minimal
+        new_w_fast = self.w_fast + dt / self.tau_fast * (-self.w_fast + h_fast + delta_w * 0.5)
         self.w_fast = max(min_w, min(max_w, new_w_fast))
         
-        new_w_slow = self.w_slow + dt / self.tau_slow * (-self.w_slow + h_slow + delta_w * 0.1)
+        new_w_slow = self.w_slow + dt / self.tau_slow * (-self.w_slow + h_slow + delta_w * 0.03)
         self.w_slow = max(min_w, min(max_w, new_w_slow))
         
+        # v3.3: Meta weight fix — was collapsing to ~0 (mean=-0.002, std=0.028)
+        # Root cause: tau_meta=1000 too slow, meta_target = delta_w * 0.05 too small
+        # The term dt/1000 * (-w_meta + tiny) → exponential decay to zero
+        # FIX: Larger target, w_slow contributes to meta, wider clamp range
         serotonin = neuromodulators.get('serotonin', 0.5)
-        # ACh Modulation: Collaborate in stabilizing what dopamine has done (Paper Claim)
-        # Acts alongside Serotonin to lock in changes to the metabotropic weight
         stabilizer = (1.0 if serotonin > 0.5 else 0.5) * (1.2 if ach > 0.6 else 1.0)
-        meta_target = delta_w * 0.05 * stabilizer
+        meta_gain = getattr(self.params, 'meta_target_gain', 0.25)
+        meta_accum = getattr(self.params, 'meta_accumulation_rate', 0.3)
+        meta_clamp = getattr(self.params, 'meta_clamp_max', 0.8)
+        # Meta tracks slow accumulated patterns, not just instantaneous delta_w
+        meta_target = (delta_w * meta_gain + self.w_slow * meta_accum) * stabilizer
         new_w_meta = self.w_meta + dt / self.tau_meta * (-self.w_meta + meta_target)
-        self.w_meta = max(-0.5, min(0.5, new_w_meta))
+        self.w_meta = max(-meta_clamp, min(meta_clamp, new_w_meta))
         
         activity = abs(self.w_fast) + abs(self.w_slow)
         self.integrity = min(1.0, self.integrity + 0.001 * dt * activity) if activity >= 0.01 else self.integrity - self.params.synapse_death_prob * dt

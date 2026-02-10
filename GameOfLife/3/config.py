@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Config
+# Neuraxon Game of Life Config v3.3
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -105,25 +105,33 @@ ROCK_HIT_MEMORY = 5           # How many recent rock hits to track
 ROCK_HIT_THRESHOLD = 3        # Hits before forced direction change
 
 # v3.2: Resting metabolism constants
+# v3.3: Kept but referenced from NxEr attribute for inheritance
+RESTING_METABOLISM_MULTIPLIER_DEFAULT = 0.3
+RESTING_TEMP_DROP_RATE = 0.08  # v3.3: Slightly faster drop when resting
+
+# v3.3: Temperature dynamics rebalance — data showed temp stuck at ~37.74
+# with near-zero circadian correlation. Gains must exceed decay for variance.
+TEMP_ACTIVITY_GAIN_V32 = 0.8   # v3.3: Up from 0.5 — movement must generate real heat
+TEMP_FOOD_GAIN_V32 = 1.0       # v3.3: Up from 0.7 — thermogenesis of eating
+TEMP_DECAY_RATE_V32 = 0.008    # v3.3: Down from 0.015 — slower return = more variance
+
+# v3.3: RESTING_METABOLISM_MULT alias for backward compat (game_loop uses this)
+RESTING_METABOLISM_MULT = 0.3
+
+# v3.3: Resting metabolism constants (BIOINSPIRED: torpor/sleep energy conservation)
 RESTING_METABOLISM_MULTIPLIER = 0.3
-RESTING_TEMP_DROP_RATE = 0.1
-
-# v3.2: Temperature dynamics fix
-TEMP_ACTIVITY_GAIN_V32 = 0.5
-TEMP_FOOD_GAIN_V32 = 0.7
-TEMP_DECAY_RATE_V32 = 0.015
-
-# v3.2: Resting metabolism constants (BIOINSPIRED: torpor/sleep energy conservation)
-RESTING_METABOLISM_MULTIPLIER = 0.3  # Resting NxErs use 30% of normal metabolism
 RESTING_TEMP_DROP_RATE = 0.1  # Body temp drops slowly when resting
 RESTING_FOOD_THRESHOLD = 0.2  # Min food fraction to enter voluntary rest
 
-# v3.2: FIX - Temperature generation constants (too low before, NxErs never got hot)
-TEMP_ACTIVITY_GAIN = 0.5      # v3.2: Increased from 0.3 - heat from movement/activity
-TEMP_SOCIAL_GAIN = 0.3        # v3.2: Increased from 0.2 - heat from proximity to others
-TEMP_FOOD_GAIN = 0.7          # v3.2: Increased from 0.5 - thermogenic effect of eating
-TEMP_DECAY_RATE = 0.015       # v3.2: Reduced from 0.02 - slower return to baseline
-TEMP_BASELINE_VARIANCE = 0.5  # v3.2: Individual baseline variance (37 +/- 0.5)
+# v3.3: FIX - Temperature constants rebalanced from data analysis
+# Results96F: temp_circadian_corr ≈ 0, temp variance IQR = 0.0–2.5
+# Root cause: decay pulled everything back to 37 before gains could diverge
+TEMP_ACTIVITY_GAIN = 0.8       # v3.3: Up from 0.5 — must outpace decay
+TEMP_SOCIAL_GAIN = 0.4         # v3.3: Up from 0.3
+TEMP_FOOD_GAIN = 1.0           # v3.3: Up from 0.7
+TEMP_DECAY_RATE = 0.008        # v3.3: Down from 0.015 — slower homeostasis
+TEMP_BASELINE_VARIANCE = 1.0   # v3.3: Up from 0.5 — more individual variation
+TEMP_NIGHT_DROP = 2.5          # v3.3: Up from 1.5 — stronger circadian coupling
 
 @dataclass
 class NetworkParameters:
@@ -203,9 +211,15 @@ class NetworkParameters:
     # --- Synaptic Properties & Plasticity (Section 3) ---
     tau_fast: float = 5.0  
     tau_slow: float = 50.0  
-    tau_meta: float = 1000.0 
+    tau_meta: float = 200.0   # v3.3: Down from 1000 — meta weights were collapsing to ~0
     tau_ltp: float = 15.0 
     tau_ltd: float = 35.0 
+    
+    # v3.3: Meta-plasticity dynamics (NEW — Paper Section 3 multi-timescale)
+    # BIOINSPIRED: Metabotropic receptors integrate over seconds-minutes, not hours
+    meta_target_gain: float = 0.25        # v3.3: Up from 0.05 — meta_target = delta_w * gain
+    meta_accumulation_rate: float = 0.3   # v3.3: Fraction of w_slow contributing to meta
+    meta_clamp_max: float = 0.8           # v3.3: Up from 0.5 — allow wider meta range
     
     # --- Synaptic Weight Initialization Ranges ---
     w_fast_init_min: float = -1.0
@@ -214,6 +228,16 @@ class NetworkParameters:
     w_slow_init_max: float = 0.5
     w_meta_init_min: float = -0.3
     w_meta_init_max: float = 0.3
+    
+    # v3.3: LTP/LTD rebalance parameters
+    # Results96F: LTP/LTD ratio = 0.082 (7.6% LTP, 92.4% LTD) — massively LTD-biased
+    # Root cause: LTP requires pre=1 & post=1 & DA high (~rare), LTD fires on pre=1 & post≤0 (~80%)
+    # FIX: Add Hebbian LTP component independent of DA, reduce neutral-state LTD scale
+    hebbian_ltp_rate: float = 0.3         # v3.3: Fraction of LTP that's pure Hebbian (no DA gate)
+    ltd_neutral_scale: float = 0.08       # v3.3: Down from 0.3 — neutral post barely depresses
+    ltd_inhibitory_scale: float = 0.6     # v3.3: Down from 1.0 — inhibitory post still depresses
+    # v3.3: Slow weight uses post_trace more than pre_trace to differentiate from fast
+    w_slow_post_trace_fraction: float = 0.8  # How much post_trace drives w_slow (vs pre_trace)
     
     # --- Learning and Plasticity Rules (Section 4) ---
     learning_rate: float = 0.01 

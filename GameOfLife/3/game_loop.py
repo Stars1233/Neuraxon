@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Game Loop
+# Neuraxon Game of Life Game Loop v3.3
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -45,7 +45,7 @@ from simulation.entities import NxEr, NxErStats, Food, Proprioceptron
 from ui.renderer import Renderer
 
 # Import config constants
-from config import CIRCADIAN_CYCLE_TICKS, TEMP_BASELINE, TEMP_MIN, TEMP_MAX, TEMP_NIGHT_DROP, TEMP_ACTIVITY_GAIN, TEMP_SOCIAL_GAIN, TEMP_FOOD_GAIN, TEMP_DECAY_RATE
+from config import CIRCADIAN_CYCLE_TICKS, TEMP_BASELINE, TEMP_MIN, TEMP_MAX, TEMP_NIGHT_DROP, TEMP_ACTIVITY_GAIN, TEMP_SOCIAL_GAIN, TEMP_FOOD_GAIN, TEMP_DECAY_RATE, TEMP_BASELINE_VARIANCE, RESTING_METABOLISM_MULTIPLIER, RESTING_METABOLISM_MULT
 
 # ============================================================================
 # CIRCADIAN RHYTHM SYSTEM (NEW v3.0)
@@ -137,16 +137,22 @@ def update_body_temperature(nxer, params, step_tick: int,
     import math
     
     current_temp = getattr(nxer, 'body_temperature', params.temperature_baseline)
-    baseline = params.temperature_baseline
+    # v3.3: Individual baseline with variance (data showed everyone stuck at 37)
+    baseline = getattr(nxer, '_temp_baseline_individual', params.temperature_baseline)
     
-    # Circadian effect: temperature drops at night
+    # v3.3: Circadian effect: stronger night drop (was TEMP_NIGHT_DROP=1.5, now 2.5)
+    # Results96F: temp_circadian_correlation ≈ 0 — circadian had no temp effect
     night_drop = 0.0
     if is_night_phase(circadian_phase):
         night_intensity = math.sin(math.pi * (circadian_phase - 0.5) * 2)
         night_drop = -TEMP_NIGHT_DROP * night_intensity
+    else:
+        # v3.3: Day heating — slight temp rise during peak activity hours
+        day_intensity = math.sin(math.pi * circadian_phase * 2) if circadian_phase < 0.5 else 0.0
+        night_drop = 0.5 * day_intensity  # Positive = warming during day
     
-    # Activity heat
-    activity_heat = TEMP_ACTIVITY_GAIN if just_moved else 0.0
+    # v3.3: Activity heat increased and made proportional to movement recency
+    activity_heat = TEMP_ACTIVITY_GAIN if just_moved else -0.15  # v3.3: Inactivity cools slightly
     
     # Social warmth
     social_heat = min(TEMP_SOCIAL_GAIN * nearby_nxers_count, 0.8)
@@ -154,10 +160,14 @@ def update_body_temperature(nxer, params, step_tick: int,
     # Thermogenic effect of eating
     food_heat = TEMP_FOOD_GAIN if just_ate else 0.0
     
-    # Calculate target temperature
-    target_temp = baseline + night_drop + activity_heat + social_heat + food_heat
+    # v3.3: Resting reduces temperature (BIOINSPIRED: sleep = lower core temp)
+    rest_cooling = -0.4 if getattr(nxer, 'is_resting', False) else 0.0
     
-    # Decay toward target
+    # Calculate target temperature
+    target_temp = baseline + night_drop + activity_heat + social_heat + food_heat + rest_cooling
+    
+    # v3.3: Decay toward target — reduced rate to allow more variance
+    # Results96F: temp variance IQR was 0.0–2.5, mean 37.74 barely moved
     new_temp = current_temp + TEMP_DECAY_RATE * (target_temp - current_temp)
     
     # Clamp to biological limits
@@ -476,6 +486,14 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
             proprioceptron=Proprioceptron()
         )
         used_colors.add(nx.color)
+        # v3.3: Set individual temperature baseline with variance
+        nx._temp_baseline_individual = p.temperature_baseline + random.uniform(
+            -TEMP_BASELINE_VARIANCE, TEMP_BASELINE_VARIANCE)
+        # v3.3: FIX — Set inherited metabolism attributes on first-gen NxErs too
+        # Results96F: All inherited metabolism data = NaN because only children got these
+        nx.temperature_tolerance_cold = getattr(p, 'temp_cold_threshold', 35.5)
+        nx.temperature_tolerance_hot = getattr(p, 'temp_hot_threshold', 38.5)
+        nx.resting_metabolism_multiplier = RESTING_METABOLISM_MULTIPLIER
         # UPDATED v3.1: 9 inputs
         nx.last_inputs = (0, 0, 0, 0, 0, 0, 0, 0, 0)
         return nx
@@ -595,6 +613,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
             child.temperature_tolerance_cold = inherited_meta.get('temperature_tolerance_cold', 35.5)
             child.temperature_tolerance_hot = inherited_meta.get('temperature_tolerance_hot', 38.5)
             child.resting_metabolism_multiplier = inherited_meta.get('resting_metabolism_multiplier', 0.3)
+        else:
+            # v3.3: Fallback — ensure attributes exist even without inheritance
+            child.temperature_tolerance_cold = 35.5
+            child.temperature_tolerance_hot = 38.5
+            child.resting_metabolism_multiplier = 0.3
+        # v3.3: Individual temperature baseline for children
+        child._temp_baseline_individual = child.body_temperature + random.uniform(-TEMP_BASELINE_VARIANCE, TEMP_BASELINE_VARIANCE)
         
         transfer = min(5.0, min(A.food / 2, B.food / 2))
         A.food -= transfer
@@ -1227,7 +1252,6 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
 
     FIXED_DT = 1.0 / GlobalTimeSteps
     METABOLIC_RAMP_PER_SEC = 10  # Metabolic Ramp: +1000%/sec idle (atrophy) for the new v2.23 metrics
-    RESTING_METABOLISM_MULT = 0.3
     accumulator = 0.0
     data_logger = get_data_logger()
     
@@ -1401,11 +1425,21 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             target = baseline + mod_val
                             a.net.neuromodulators[mod] = current + 0.01 * (target - current)
                         
-                        # Rest mode: NxErs tend to rest at night when food is adequate
-                        if is_night and a.food > StartFood * 0.4:
-                            a.is_resting = True
-                        elif not is_night:
-                            a.is_resting = False
+                        # v3.3: Resting-circadian coupling fix
+                        # Results96F: resting_fraction vs circadian_phase r=0.03 — no coupling
+                        # FIX: Use graded probability based on phase, not binary night check
+                        rest_tendency = getattr(a.net.params, 'circadian_rest_tendency', 0.7)
+                        food_ok = a.food > StartFood * 0.3
+                        if is_night and food_ok:
+                            # Night: probability of resting scales with phase depth
+                            night_depth = math.sin(math.pi * (global_circadian_phase - 0.5) * 2) if global_circadian_phase >= 0.5 else 0.0
+                            rest_prob = rest_tendency * max(0, night_depth)
+                            if random.random() < rest_prob * 0.05:  # Per-tick probability
+                                a.is_resting = True
+                        elif not is_night and not getattr(a, '_brain_wants_rest', False):
+                            # Day: wake up (unless brain explicitly requested rest)
+                            if random.random() < 0.1:  # Gradual wake-up
+                                a.is_resting = False
                         
                         # Resting reduces metabolism and activity
                         if a.is_resting:
@@ -1721,6 +1755,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                         #  1 = rest (enter rest mode if conditions allow)
                         rest_override_thresh = getattr(a.net.params, 'brain_rest_override_threshold', 0.3)
                         if O6 == 1:
+                            # v3.3: Track brain rest intent for circadian coupling
+                            a._brain_wants_rest = True
                             # Brain wants to rest - allow if food is adequate
                             if a.food > StartFood * rest_override_thresh:
                                 a.is_resting = True
@@ -1728,11 +1764,16 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 a.net.neuromodulators['serotonin'] = min(2.0, 
                                     a.net.neuromodulators.get('serotonin', 0.12) + 0.02)
                         elif O6 == -1:
+                            # v3.3: Clear brain rest flag
+                            a._brain_wants_rest = False
                             # Brain forces active state - override any rest tendency
                             a.is_resting = False
                             # Waking increases norepinephrine (alertness)
                             a.net.neuromodulators['norepinephrine'] = min(2.0,
                                 a.net.neuromodulators.get('norepinephrine', 0.12) + 0.01)
+                        else:
+                            # v3.3: O6==0 — don't override, but clear brain flag
+                            a._brain_wants_rest = False
                         # O6 == 0: Follow normal circadian/instinct behavior (no override)
                         
                         # Temperature affects movement urgency (BIOINSPIRED: thermoregulation)

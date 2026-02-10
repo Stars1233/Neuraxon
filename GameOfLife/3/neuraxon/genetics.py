@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Neuron Genetics
+# Neuraxon Game of Life Neuron Genetics v3.3
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -219,6 +219,29 @@ def Inheritance(father: 'NxEr', mother: 'NxEr') -> 'NeuraxonNetwork':
     child_params.tau_meta = pick_or_blend(father_params.tau_meta, mother_params.tau_meta)
     child_params.tau_ltp = pick_or_blend(father_params.tau_ltp, mother_params.tau_ltp)
     child_params.tau_ltd = pick_or_blend(father_params.tau_ltd, mother_params.tau_ltd)
+    
+    # v3.3: Inherit new meta-plasticity and LTP/LTD balance params
+    child_params.meta_target_gain = blend_bounded(
+        getattr(father_params, 'meta_target_gain', 0.25),
+        getattr(mother_params, 'meta_target_gain', 0.25), 0.1, 0.5)
+    child_params.meta_accumulation_rate = blend_bounded(
+        getattr(father_params, 'meta_accumulation_rate', 0.3),
+        getattr(mother_params, 'meta_accumulation_rate', 0.3), 0.1, 0.6)
+    child_params.meta_clamp_max = blend_bounded(
+        getattr(father_params, 'meta_clamp_max', 0.8),
+        getattr(mother_params, 'meta_clamp_max', 0.8), 0.5, 1.0)
+    child_params.hebbian_ltp_rate = blend_bounded(
+        getattr(father_params, 'hebbian_ltp_rate', 0.3),
+        getattr(mother_params, 'hebbian_ltp_rate', 0.3), 0.1, 0.6)
+    child_params.ltd_neutral_scale = blend_bounded(
+        getattr(father_params, 'ltd_neutral_scale', 0.08),
+        getattr(mother_params, 'ltd_neutral_scale', 0.08), 0.02, 0.2)
+    child_params.ltd_inhibitory_scale = blend_bounded(
+        getattr(father_params, 'ltd_inhibitory_scale', 0.6),
+        getattr(mother_params, 'ltd_inhibitory_scale', 0.6), 0.3, 1.0)
+    child_params.w_slow_post_trace_fraction = blend_bounded(
+        getattr(father_params, 'w_slow_post_trace_fraction', 0.8),
+        getattr(mother_params, 'w_slow_post_trace_fraction', 0.8), 0.5, 0.95)
     
     # --- Synaptic Weight Initialization Ranges ---
     child_params.w_fast_init_min = pick_or_blend(father_params.w_fast_init_min, mother_params.w_fast_init_min)

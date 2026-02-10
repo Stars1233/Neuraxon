@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.3.2 (Research Version): several updates for the new senses & circadian cycle
+# Neuraxon Game of Life v.3.3 (Research Version):  Core plasticity rewrite LTP &LTD  Fast/slow differentiation & Body/circadian fixes
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
