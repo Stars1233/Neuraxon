@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.3.3 (Research Version):  Core plasticity rewrite LTP &LTD  Fast/slow differentiation & Body/circadian fixes
+# Neuraxon Game of Life v.3.31 (Research Version): added meta_influence_gain & meta_da_boost & save_state() fixes 
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife

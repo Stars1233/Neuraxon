@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Neuron Components v3.3
+# Neuraxon Game of Life Neuron Components v3.31 
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -130,7 +130,13 @@ class Synapse:
         delay_factor = max(0.0, 1.0 - self.axonal_delay / 10.0)
         if self.is_afferent:
             delay_factor = max(0.5, delay_factor)
-        w = self.w_fast + self.w_slow
+        # v3.31: CRITICAL FIX — Include w_meta in effective weight
+        # Results-97: w_meta had ZERO behavioral effect (not in signal path)
+        # BIOINSPIRED: Metabotropic receptors modulate synaptic efficacy — they don't
+        # just exist as bookkeeping. G-protein coupled receptors scale the ionotropic
+        # response, hence multiplicative + additive contribution.
+        meta_gain = getattr(self.params, 'meta_influence_gain', 0.25)
+        w = self.w_fast + self.w_slow + self.w_meta * meta_gain
         return w * pre_state * delay_factor, w * pre_state * (1.0 - delay_factor)
     
     def calculate_delta_w(self, pre_state: int, post_state: int, neuromodulators: Dict[str, float], dt: float) -> float:
@@ -148,6 +154,7 @@ class Synapse:
         else:
             da_high = 0.0
         da_low = 1.0 if da > self.params.dopamine_high_affinity_threshold else 0.0
+        self._last_da_high = da_high  # v3.31: Store for meta DA-boost in apply_update
         
         # ACh gain: If high, consolidates learning faster (Paper Claim: Consolidate what has been learned)
         ach_gain = 1.0 + (ach if ach > 0.5 else 0.0)
@@ -177,11 +184,11 @@ class Synapse:
         self._pending_delta_w = 0.0
         
         if pre_state == 1 and post_state == 1:
-            # v3.3: LTP = DA-gated component + Hebbian component
+            # v3.31: LTP = DA-gated component + Hebbian component (reduced Hebbian from 0.3→0.18)
             # BIOINSPIRED: Basic Hebbian LTP occurs at coincident firing even without
             # explicit reward — DA modulates magnitude, not gating entirely.
             # Results96F showed LTP/LTD ratio of 0.082 — far too low for learning.
-            hebbian_frac = getattr(self.params, 'hebbian_ltp_rate', 0.3)
+            hebbian_frac = getattr(self.params, 'hebbian_ltp_rate', 0.18)
             da_component = self.learning_rate * self.learning_rate_mod * da_high * self.pre_trace
             hebbian_component = self.learning_rate * hebbian_frac * self.pre_trace * self.post_trace
             delta = da_component + hebbian_component
@@ -193,13 +200,13 @@ class Synapse:
                                             delta_w=delta)
             return delta
         elif pre_state == 1 and post_state <= 0:
-            # v3.3: LTD rebalanced — neutral post barely depresses, inhibitory still depresses
+            # v3.31: LTD slightly increased from v3.3 — neutral 0.08→0.12 to counter LTP overcorrection
             # Results96F: 92.4% of all plasticity events were LTD — far too dominant.
             # Root cause: neutral state is ~50% of all states, and was scaled at 0.3 × full LTD.
             # FIX: Neutral scale → 0.08, inhibitory scale → 0.6 (from 1.0/0.3)
             ach_forgetting_mult = 1.5 if ach > 0.6 else 1.0
             
-            ltd_neutral = getattr(self.params, 'ltd_neutral_scale', 0.08)
+            ltd_neutral = getattr(self.params, 'ltd_neutral_scale', 0.12)
             ltd_inhib = getattr(self.params, 'ltd_inhibitory_scale', 0.6)
             ltd_scale = (ltd_inhib if post_state == -1 else ltd_neutral) * ach_forgetting_mult
             delta = -self.learning_rate * self.learning_rate_mod * da_low * self.pre_trace_ltd * ltd_scale
@@ -231,11 +238,11 @@ class Synapse:
                 dw / (i + 1) for i, dw in enumerate(neighbor_deltas[:3]))
             delta_w += neighbor_contribution
         
-        # v3.3: Differentiate fast vs slow timescale drivers
+        # v3.31: Differentiate fast vs slow timescale drivers
         # Results96F: w_fast/w_slow correlation = 0.94 — they moved in lockstep
         # FIX: w_fast tracks pre_trace (immediate stimulus), w_slow tracks post_trace (response)
         h_fast = self.pre_trace  # Fast: driven by presynaptic activity
-        post_frac = getattr(self.params, 'w_slow_post_trace_fraction', 0.8)
+        post_frac = getattr(self.params, 'w_slow_post_trace_fraction', 0.85)
         h_slow = (1.0 - post_frac) * self.pre_trace + post_frac * self.post_trace  # Slow: response-driven
         
         # Use localized tau_fast, tau_slow, tau_meta with saturation prevention
@@ -243,25 +250,42 @@ class Synapse:
         max_w = self.params.max_weight_magnitude
         min_w = self.params.min_weight_magnitude
         
-        # v3.3: w_fast gets larger share of delta_w (immediate learning), w_slow minimal
-        new_w_fast = self.w_fast + dt / self.tau_fast * (-self.w_fast + h_fast + delta_w * 0.5)
+        # v3.31: Use configurable delta shares for better differentiation
+        fast_share = getattr(self.params, 'w_fast_delta_share', 0.5)
+        slow_share = getattr(self.params, 'w_slow_delta_share', 0.02)
+        
+        new_w_fast = self.w_fast + dt / self.tau_fast * (-self.w_fast + h_fast + delta_w * fast_share)
         self.w_fast = max(min_w, min(max_w, new_w_fast))
         
-        new_w_slow = self.w_slow + dt / self.tau_slow * (-self.w_slow + h_slow + delta_w * 0.03)
+        new_w_slow = self.w_slow + dt / self.tau_slow * (-self.w_slow + h_slow + delta_w * slow_share)
         self.w_slow = max(min_w, min(max_w, new_w_slow))
         
-        # v3.3: Meta weight fix — was collapsing to ~0 (mean=-0.002, std=0.028)
-        # Root cause: tau_meta=1000 too slow, meta_target = delta_w * 0.05 too small
-        # The term dt/1000 * (-w_meta + tiny) → exponential decay to zero
-        # FIX: Larger target, w_slow contributes to meta, wider clamp range
+        # v3.31: Meta weight with DA-gated reward boost
+        # BIOINSPIRED: Metabotropic receptor upregulation is reward-modulated.
+        # When dopamine is high (reward), meta accumulates faster → synapses that
+        # were active during rewarding experiences develop stronger meta weights →
+        # those pathways become preferentially weighted for future behavior.
+        # This creates the action-meta correlation the Paper describes.
         serotonin = neuromodulators.get('serotonin', 0.5)
         stabilizer = (1.0 if serotonin > 0.5 else 0.5) * (1.2 if ach > 0.6 else 1.0)
-        meta_gain = getattr(self.params, 'meta_target_gain', 0.25)
-        meta_accum = getattr(self.params, 'meta_accumulation_rate', 0.3)
-        meta_clamp = getattr(self.params, 'meta_clamp_max', 0.8)
-        # Meta tracks slow accumulated patterns, not just instantaneous delta_w
-        meta_target = (delta_w * meta_gain + self.w_slow * meta_accum) * stabilizer
-        new_w_meta = self.w_meta + dt / self.tau_meta * (-self.w_meta + meta_target)
+        meta_gain = getattr(self.params, 'meta_target_gain', 0.30)
+        meta_accum = getattr(self.params, 'meta_accumulation_rate', 0.35)
+        meta_clamp = getattr(self.params, 'meta_clamp_max', 1.0)
+        meta_da_boost = getattr(self.params, 'meta_da_boost', 2.0)
+        
+        # DA boost: when dopamine is high, meta accumulates faster
+        last_da = getattr(self, '_last_da_high', 0.0)
+        da_multiplier = 1.0 + last_da * (meta_da_boost - 1.0)  # Range [1.0, meta_da_boost]
+        
+        # Meta target: accumulated slow patterns + instantaneous learning signal, boosted by reward
+        meta_target = (delta_w * meta_gain + self.w_slow * meta_accum) * stabilizer * da_multiplier
+        
+        # v3.31: Reduced decay term — multiply decay by 0.7 to let meta accumulate more
+        # The equation dw/dt = (1/tau) * (-w + target) decays w toward target.
+        # If target is episodic (nonzero only during learning), w decays to 0 between episodes.
+        # Reducing the decay coefficient lets meta retain accumulated value longer.
+        decay_coeff = 0.7  # < 1.0 means slower decay toward zero between learning episodes
+        new_w_meta = self.w_meta + dt / self.tau_meta * (-self.w_meta * decay_coeff + meta_target)
         self.w_meta = max(-meta_clamp, min(meta_clamp, new_w_meta))
         
         activity = abs(self.w_fast) + abs(self.w_slow)
