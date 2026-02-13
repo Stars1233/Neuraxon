@@ -13,7 +13,7 @@
 
 <br>
 
-## 🚀 Neuraxon Game of Life v3.32 Released!
+## 🚀 Neuraxon Game of Life v3.33 Released!
 
 **Bio-Physical Coupling: Circadian Rhythms, Thermodynamics & Proprioception.**
 
@@ -21,7 +21,8 @@ Experience the new **3D WebGL Lite Version** at [HuggingFace](https://huggingfac
 
 ### 📅 Change Log (Research Version)
 
-**February 13th 2026: v3.32**<br>
+**February 13th 2026: v3.32 & v3.33**<br>
+- enzymatic clearance + autoreceptor feedback for neuromodulator homeostasis  <br>
 - fixed temperature -> circadian correlation & active_to_silent transitions  <br>
 
 **February 12th 2026: v3.31**<br>
@@ -487,6 +488,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
