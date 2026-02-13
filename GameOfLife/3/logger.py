@@ -1544,9 +1544,9 @@ class DataLogger:
         if self.log_level >= 2:
             # Set limit_logs based on log level
             if self.log_level >= 3:
-                limit_logs = 100000
+                limit_logs = 1000000
             else:
-                limit_logs = 5000
+                limit_logs = 50000
             
             serializable_synapse_snapshots = []
             for snapshot in self.synapse_snapshots:

@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Game Loop v3.31
+# Neuraxon Game of Life Game Loop v3.33 
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -46,6 +46,27 @@ from ui.renderer import Renderer
 
 # Import config constants
 from config import CIRCADIAN_CYCLE_TICKS, TEMP_BASELINE, TEMP_MIN, TEMP_MAX, TEMP_NIGHT_DROP, TEMP_ACTIVITY_GAIN, TEMP_SOCIAL_GAIN, TEMP_FOOD_GAIN, TEMP_DECAY_RATE, TEMP_BASELINE_VARIANCE, RESTING_METABOLISM_MULTIPLIER, RESTING_METABOLISM_MULT, TEMP_CIRCADIAN_CORR_WINDOW, SYNAPSE_SILENCING_ACTIVITY_THRESHOLD
+
+# ============================================================================
+# v3.33: AUTORECEPTOR NEGATIVE FEEDBACK SYSTEM
+# ============================================================================
+# BIOINSPIRED: Presynaptic autoreceptors (5-HT1A, α2-adrenergic, D2-short)
+# detect high synaptic neurotransmitter concentration and reduce vesicle release.
+# This prevents runaway accumulation at the ceiling (2.0) by scaling down the
+# effective release magnitude as concentration rises.
+# Reference: Bhatt et al. (2021) "Autoreceptor modulation of monoamine systems"
+
+def _autoreceptor_scale(current_level, ceiling=2.0, strength=1.0):
+    """Return [0.05, 1.0] scaling factor — high levels suppress further release."""
+    ratio = current_level / ceiling
+    return max(0.05, 1.0 - strength * ratio * ratio)
+
+def _neuromod_boost(neuromodulators, mod, raw_boost, params=None, ceiling=2.0):
+    """Apply a neuromodulator boost with autoreceptor negative feedback."""
+    current = neuromodulators.get(mod, 0.12)
+    strength = getattr(params, 'autoreceptor_strength', 1.0) if params else 1.0
+    scale = _autoreceptor_scale(current, ceiling, strength)
+    neuromodulators[mod] = min(ceiling, current + raw_boost * scale)
 
 # ============================================================================
 # CIRCADIAN RHYTHM SYSTEM (NEW v3.0)
@@ -378,6 +399,13 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         p.norepinephrine_low_affinity_threshold = random.uniform(0.5, 1.5)
         
         p.neuromod_decay_rate = random.uniform(0.005, 0.05)  
+        # v3.33: Evolvable reuptake transporter kinetics
+        p.reuptake_vmax_ne = random.uniform(0.05, 0.12)
+        p.reuptake_vmax_da = random.uniform(0.03, 0.08)
+        p.reuptake_vmax_5ht = random.uniform(0.02, 0.05)
+        p.reuptake_vmax_ach = random.uniform(0.06, 0.15)
+        p.reuptake_km = random.uniform(0.3, 0.8)
+        p.autoreceptor_strength = random.uniform(0.7, 1.3)
         p.diffusion_rate = random.uniform(0.01, 0.05) 
         
         # --- Oscillators & Synchronization ---
@@ -640,8 +668,8 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         child.stats.fitness_score = (A.stats.fitness_score + B.stats.fitness_score) / 2
         
         # Paper Claim: Norepinephrine activated somewhat by the birth of offspring per se
-        A.net.neuromodulators['norepinephrine'] = min(2.0, A.net.neuromodulators.get('norepinephrine', 0.12) + 0.15)
-        B.net.neuromodulators['norepinephrine'] = min(2.0, B.net.neuromodulators.get('norepinephrine', 0.12) + 0.15)
+        _neuromod_boost(A.net.neuromodulators, 'norepinephrine', 0.15, A.net.params)
+        _neuromod_boost(B.net.neuromodulators, 'norepinephrine', 0.15, B.net.params)
         
         return child
         
@@ -709,7 +737,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         path = _pick_save_file(default)
         if not path: return
         params = a.net.params
-        data = {"network_name": params.network_name, "num_input_neurons": params.num_input_neurons, "num_hidden_neurons": params.num_hidden_neurons, "num_output_neurons": params.num_output_neurons, "connection_probability": params.connection_probability, "membrane_time_constant": params.membrane_time_constant, "firing_threshold_excitatory": params.firing_threshold_excitatory, "firing_threshold_inhibitory": params.firing_threshold_inhibitory, "adaptation_rate": params.adaptation_rate, "spontaneous_firing_rate": params.spontaneous_firing_rate, "neuron_health_decay": params.neuron_health_decay, "tau_fast": params.tau_fast, "w_fast_init_min": params.w_fast_init_min, "w_fast_init_max": params.w_fast_init_max, "tau_slow": params.tau_slow, "w_slow_init_min": params.w_slow_init_min, "w_slow_init_max": params.w_slow_init_max, "tau_meta": params.tau_meta, "w_meta_init_min": params.w_meta_init_min, "w_meta_init_max": params.w_meta_init_max, "learning_rate": params.learning_rate, "stdp_window": params.stdp_window, "synapse_integrity_threshold": params.synapse_integrity_threshold, "synapse_formation_prob": params.synapse_formation_prob, "synapse_death_prob": params.synapse_death_prob, "neuron_death_threshold": params.neuron_death_threshold, "dopamine_baseline": params.dopamine_baseline, "serotonin_baseline": params.serotonin_baseline, "acetylcholine_baseline": params.acetylcholine_baseline, "norepinephrine_baseline": params.norepinephrine_baseline, "neuromod_decay_rate": params.neuromod_decay_rate, "dt": params.dt, "simulation_steps": params.simulation_steps}
+        data = {"network_name": params.network_name, "num_input_neurons": params.num_input_neurons, "num_hidden_neurons": params.num_hidden_neurons, "num_output_neurons": params.num_output_neurons, "connection_probability": params.connection_probability, "membrane_time_constant": params.membrane_time_constant, "firing_threshold_excitatory": params.firing_threshold_excitatory, "firing_threshold_inhibitory": params.firing_threshold_inhibitory, "adaptation_rate": params.adaptation_rate, "spontaneous_firing_rate": params.spontaneous_firing_rate, "neuron_health_decay": params.neuron_health_decay, "tau_fast": params.tau_fast, "w_fast_init_min": params.w_fast_init_min, "w_fast_init_max": params.w_fast_init_max, "tau_slow": params.tau_slow, "w_slow_init_min": params.w_slow_init_min, "w_slow_init_max": params.w_slow_init_max, "tau_meta": params.tau_meta, "w_meta_init_min": params.w_meta_init_min, "w_meta_init_max": params.w_meta_init_max, "learning_rate": params.learning_rate, "stdp_window": params.stdp_window, "synapse_integrity_threshold": params.synapse_integrity_threshold, "synapse_formation_prob": params.synapse_formation_prob, "synapse_death_prob": params.synapse_death_prob, "neuron_death_threshold": params.neuron_death_threshold, "dopamine_baseline": params.dopamine_baseline, "serotonin_baseline": params.serotonin_baseline, "acetylcholine_baseline": params.acetylcholine_baseline, "norepinephrine_baseline": params.norepinephrine_baseline, "neuromod_decay_rate": params.neuromod_decay_rate, "reuptake_vmax_ne": params.reuptake_vmax_ne, "reuptake_vmax_da": params.reuptake_vmax_da, "reuptake_vmax_5ht": params.reuptake_vmax_5ht, "reuptake_vmax_ach": params.reuptake_vmax_ach, "reuptake_km": params.reuptake_km, "autoreceptor_strength": params.autoreceptor_strength, "dt": params.dt, "simulation_steps": params.simulation_steps}
         with open(path, "w") as f: json.dump(data, f, indent=2)
         print(f"[SAVE NxVizer] {path}")
         
@@ -717,7 +745,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
         path = _pick_open_file()
         if not path: return
         with open(path, "r") as f: data = json.load(f)
-        params = NetworkParameters(network_name=data.get("network_name", "Neuraxon NxEr"), num_input_neurons=data.get("num_input_neurons", 6), num_hidden_neurons=data.get("num_hidden_neurons", 10), num_output_neurons=data.get("num_output_neurons", 5), connection_probability=data.get("connection_probability", 0.15), membrane_time_constant=data.get("membrane_time_constant", 20.0), firing_threshold_excitatory=data.get("firing_threshold_excitatory", 0.9), firing_threshold_inhibitory=data.get("firing_threshold_inhibitory", -0.9), adaptation_rate=data.get("adaptation_rate", 0.05), spontaneous_firing_rate=data.get("spontaneous_firing_rate", 0.02), neuron_health_decay=data.get("neuron_health_decay", 0.001), tau_fast=data.get("tau_fast", 5.0), w_fast_init_min=data.get("w_fast_init_min", -1.0), w_fast_init_max=data.get("w_fast_init_max", 1.0), tau_slow=data.get("tau_slow", 50.0), w_slow_init_min=data.get("w_slow_init_min", -0.5), w_slow_init_max=data.get("w_slow_init_max", 0.5), tau_meta=data.get("tau_meta", 1000.0), w_meta_init_min=data.get("w_meta_init_min", -0.3), w_meta_init_max=data.get("w_meta_init_max", 0.3), learning_rate=data.get("learning_rate", 0.01), stdp_window=data.get("stdp_window", 20.0), synapse_integrity_threshold=data.get("synapse_integrity_threshold", 0.1), synapse_formation_prob=data.get("synapse_formation_prob", 0.02), synapse_death_prob=data.get("synapse_death_prob", 0.01), neuron_death_threshold=data.get("neuron_death_threshold", 0.1), dopamine_baseline=data.get("dopamine_baseline", 0.12), serotonin_baseline=data.get("serotonin_baseline", 0.12), acetylcholine_baseline=data.get("acetylcholine_baseline", 0.12), norepinephrine_baseline=data.get("norepinephrine_baseline", 0.12), neuromod_decay_rate=data.get("neuromod_decay_rate", 0.1), dt=data.get("dt", 1.0), simulation_steps=data.get("simulation_steps", 30))
+        params = NetworkParameters(network_name=data.get("network_name", "Neuraxon NxEr"), num_input_neurons=data.get("num_input_neurons", 6), num_hidden_neurons=data.get("num_hidden_neurons", 10), num_output_neurons=data.get("num_output_neurons", 5), connection_probability=data.get("connection_probability", 0.15), membrane_time_constant=data.get("membrane_time_constant", 20.0), firing_threshold_excitatory=data.get("firing_threshold_excitatory", 0.9), firing_threshold_inhibitory=data.get("firing_threshold_inhibitory", -0.9), adaptation_rate=data.get("adaptation_rate", 0.05), spontaneous_firing_rate=data.get("spontaneous_firing_rate", 0.02), neuron_health_decay=data.get("neuron_health_decay", 0.001), tau_fast=data.get("tau_fast", 5.0), w_fast_init_min=data.get("w_fast_init_min", -1.0), w_fast_init_max=data.get("w_fast_init_max", 1.0), tau_slow=data.get("tau_slow", 50.0), w_slow_init_min=data.get("w_slow_init_min", -0.5), w_slow_init_max=data.get("w_slow_init_max", 0.5), tau_meta=data.get("tau_meta", 1000.0), w_meta_init_min=data.get("w_meta_init_min", -0.3), w_meta_init_max=data.get("w_meta_init_max", 0.3), learning_rate=data.get("learning_rate", 0.01), stdp_window=data.get("stdp_window", 20.0), synapse_integrity_threshold=data.get("synapse_integrity_threshold", 0.1), synapse_formation_prob=data.get("synapse_formation_prob", 0.02), synapse_death_prob=data.get("synapse_death_prob", 0.01), neuron_death_threshold=data.get("neuron_death_threshold", 0.1), dopamine_baseline=data.get("dopamine_baseline", 0.12), serotonin_baseline=data.get("serotonin_baseline", 0.12), acetylcholine_baseline=data.get("acetylcholine_baseline", 0.12), norepinephrine_baseline=data.get("norepinephrine_baseline", 0.12), neuromod_decay_rate=data.get("neuromod_decay_rate", 0.1), reuptake_vmax_ne=data.get("reuptake_vmax_ne", 0.08), reuptake_vmax_da=data.get("reuptake_vmax_da", 0.05), reuptake_vmax_5ht=data.get("reuptake_vmax_5ht", 0.03), reuptake_vmax_ach=data.get("reuptake_vmax_ach", 0.10), reuptake_km=data.get("reuptake_km", 0.5), autoreceptor_strength=data.get("autoreceptor_strength", 1.0), dt=data.get("dt", 1.0), simulation_steps=data.get("simulation_steps", 30))
         net = NeuraxonNetwork(params)
         pos0 = spawn_near or (world.N // 2, world.N // 2)
         pos = find_free(allow_sea=True, allow_land=True, near=pos0, search_radius=6) or wrap_pos(pos0)
@@ -1471,7 +1499,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                     
                     if a.food > StartFood * 0.6:
                         # Consolidation scenario: 5-HT and ACh increase.
-                        a.net.neuromodulators['serotonin'] = min(2.0, current_serotonin + 0.002)
+                        _neuromod_boost(a.net.neuromodulators, 'serotonin', 0.002, a.net.params)
                         #a.net.neuromodulators['acetylcholine'] = min(2.0, current_ach + 0.001) +    # ACh should be novelty/attention-driven, not tonically increased by satiety (prevents ceiling saturation).
                     # "This was very risky, difficult, or bad for us" (Starvation risk) -> serotonin decreases
                     elif a.food < StartFood * 0.25:
@@ -1567,8 +1595,10 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             if getattr(a, 'is_resting', False):
                                 # Reduce dopamine during rest (less reward-seeking)
                                 a.net.neuromodulators['dopamine'] = max(0.05, da_level * 0.9)
-                                # Elevate serotonin during rest
-                                a.net.neuromodulators['serotonin'] = min(2.0, ser_level * 1.05)
+                                # v3.33: Elevate serotonin during rest (additive + autoreceptor)
+                                # BIOINSPIRED: 5-HT release during NREM sleep is a fixed vesicle event,
+                                # not a percentage amplification; autoreceptors limit at high concentration
+                                _neuromod_boost(a.net.neuromodulators, 'serotonin', 0.03, a.net.params)
 
                             # Hyperactivity scenario*: High DA but low ACh.
                             is_hyperactive = (da_level > 0.6 and ach_level < 0.3)
@@ -1583,7 +1613,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             # Danger scenario*: All low (implied by bad health/food) or NA high.
                             # Survival mode: NA increases, ACh increases for focus. , removed or ne_level > 0.7 
                             if (a.food < StartFood * 0.2 or a.net.all_neurons[0].health < 0.3): 
-                                a.net.neuromodulators['norepinephrine'] = min(2.0, ne_level + 0.05)
+                                _neuromod_boost(a.net.neuromodulators, 'norepinephrine', 0.05, a.net.params)
                                 #a.net.neuromodulators['acetylcholine'] = min(2.0, ach_level + 0.02) # ACh decoupled from threat-arousal for this test (should be novelty/attention-driven, not yoked to NE).
                             
                             # 4. Hunger
@@ -1604,7 +1634,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                     sight_val = 1; found_obj = True; 
                                     # [DOPAMINE UPDATE] Anticipation (Visual Food Cue)
                                     # Paper Claim: "Dopamine – triggered by... visual food cues"
-                                    a.net.neuromodulators['dopamine'] = min(2.0, a.net.neuromodulators.get('dopamine', 0.12) + 0.02)
+                                    _neuromod_boost(a.net.neuromodulators, 'dopamine', 0.02, a.net.params)
                                     break
                                 if (tx, ty) in occupant_at:
                                     other_id = occupant_at[(tx, ty)]
@@ -1616,7 +1646,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                     found_obj = True;
                                     # [DOPAMINE UPDATE] Anticipation (Possible Mating)
                                     if a.is_male != other_a.is_male and can_mate(a, other_a, step_tick):
-                                        a.net.neuromodulators['dopamine'] = min(2.0, a.net.neuromodulators.get('dopamine', 0.12) + 0.05)
+                                        _neuromod_boost(a.net.neuromodulators, 'dopamine', 0.05, a.net.params)
                                     break
                             if not found_obj: sight_val = -1
                             
@@ -1625,7 +1655,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             if seen_neighbors_count >= 3: ne_boost += 0.05
                             if seen_different_clan: ne_boost += 0.10 # "Surprise/Threat"
                             if ne_boost > 0:
-                                a.net.neuromodulators['norepinephrine'] = min(2.0, a.net.neuromodulators.get('norepinephrine', 0.12) + ne_boost)
+                                _neuromod_boost(a.net.neuromodulators, 'norepinephrine', ne_boost, a.net.params)
                             
                             # 6. Smell (Square Radius)
                             smell_val = -1
@@ -1640,7 +1670,7 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                                 smell_val = 1
                                 # [DOPAMINE UPDATE] Anticipation (Olfactory Food Cue)
                                 # Paper Claim: "Dopamine – triggered by olfactory... food cues"
-                                a.net.neuromodulators['dopamine'] = min(2.0, a.net.neuromodulators.get('dopamine', 0.12) + 0.02)
+                                _neuromod_boost(a.net.neuromodulators, 'dopamine', 0.02, a.net.params)
                             elif found_nxer_smell: smell_val = 0
                             else: smell_val = -1
 
@@ -1776,16 +1806,14 @@ def GameOfLife(NxWorldSize: int = 100, NxWorldSea: float = 0.60, NxWorldRocks: f
                             if a.food > StartFood * rest_override_thresh:
                                 a.is_resting = True
                                 # Resting elevates serotonin (consolidation/sleep)
-                                a.net.neuromodulators['serotonin'] = min(2.0, 
-                                    a.net.neuromodulators.get('serotonin', 0.12) + 0.02)
+                                _neuromod_boost(a.net.neuromodulators, 'serotonin', 0.02, a.net.params)
                         elif O6 == -1:
                             # v3.3: Clear brain rest flag
                             a._brain_wants_rest = False
                             # Brain forces active state - override any rest tendency
                             a.is_resting = False
                             # Waking increases norepinephrine (alertness)
-                            a.net.neuromodulators['norepinephrine'] = min(2.0,
-                                a.net.neuromodulators.get('norepinephrine', 0.12) + 0.01)
+                            _neuromod_boost(a.net.neuromodulators, 'norepinephrine', 0.01, a.net.params)
                         else:
                             # v3.3: O6==0 — don't override, but clear brain flag
                             a._brain_wants_rest = False

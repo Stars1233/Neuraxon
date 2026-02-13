@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Neuron Network v3.31 
+# Neuraxon Game of Life Neuron Network v3.33 
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -191,7 +191,23 @@ class NeuraxonNetwork:
             local_decay = self.params.neuromod_decay_rate  # new update v2.47 3.0
             if mod == 'norepinephrine':
                 local_decay *= 3.0   
+            # Existing baseline drift (kept for sub-baseline recovery)
             self.neuromodulators[mod] += (base - self.neuromodulators[mod]) * local_decay * decay_factor * dt / 100.0
+            
+            # v3.33: Enzymatic degradation + reuptake transporter (MAO/COMT/NET/SERT/DAT/AChE)
+            # BIOINSPIRED: Monoamine clearance follows Michaelis-Menten kinetics —
+            # degradation rate is concentration-dependent and saturates at Vmax.
+            # Each transporter has distinct kinetics: AChE > NET > DAT > SERT
+            # At low concentrations: clearance ≈ (Vmax/Km) * [NT] (first-order)
+            # At high concentrations: clearance → Vmax (zero-order, saturated enzyme)
+            excess = max(0.0, self.neuromodulators[mod] - base)
+            if excess > 0:
+                vmax_key = {'norepinephrine': 'reuptake_vmax_ne', 'dopamine': 'reuptake_vmax_da',
+                            'serotonin': 'reuptake_vmax_5ht', 'acetylcholine': 'reuptake_vmax_ach'}.get(mod)
+                vmax = getattr(self.params, vmax_key, 0.05) if vmax_key else 0.05
+                km = getattr(self.params, 'reuptake_km', 0.5)
+                clearance = vmax * excess / (km + excess)
+                self.neuromodulators[mod] = max(base, self.neuromodulators[mod] - clearance * dt)
 
     
     def _apply_homeostatic_plasticity(self):

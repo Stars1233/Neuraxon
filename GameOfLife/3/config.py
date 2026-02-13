@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Config v3.32 
+# Neuraxon Game of Life Config v3.33 
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -276,6 +276,21 @@ class NetworkParameters:
     norepinephrine_high_affinity_threshold: float = 0.01
     norepinephrine_low_affinity_threshold: float = 1.0
     neuromod_decay_rate: float = 0.06
+    # v3.33: Enzymatic clearance (MAO/COMT analog) — Michaelis-Menten per-transporter
+    # BIOINSPIRED: Each monoamine has a distinct reuptake transporter with different kinetics:
+    #   NET (norepinephrine transporter): fast clearance
+    #   DAT (dopamine transporter): moderate
+    #   SERT (serotonin transporter): slow (SSRIs block this)
+    #   AChE (acetylcholinesterase): fastest enzymatic degradation
+    reuptake_vmax_ne: float = 0.08
+    reuptake_vmax_da: float = 0.05
+    reuptake_vmax_5ht: float = 0.03
+    reuptake_vmax_ach: float = 0.10
+    reuptake_km: float = 0.5  # Half-saturation constant (shared, Michaelis-Menten)
+    # v3.33: Autoreceptor negative feedback strength
+    # BIOINSPIRED: Presynaptic autoreceptors (5-HT1A, α2-adrenergic, D2-short)
+    # detect high extracellular concentration and suppress further vesicle release
+    autoreceptor_strength: float = 1.0  # Scaling exponent for feedback (1.0 = quadratic)
     diffusion_rate: float = 0.05
     dopamine_reward_magnitude: float = 0.25 
     

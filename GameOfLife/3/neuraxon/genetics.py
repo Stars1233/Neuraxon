@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Neuron Genetics v3.31 
+# Neuraxon Game of Life Neuron Genetics v3.33 
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -292,6 +292,13 @@ def Inheritance(father: 'NxEr', mother: 'NxEr') -> 'NeuraxonNetwork':
     child_params.norepinephrine_high_affinity_threshold = pick_or_blend(father_params.norepinephrine_high_affinity_threshold, mother_params.norepinephrine_high_affinity_threshold)
     child_params.norepinephrine_low_affinity_threshold = pick_or_blend(father_params.norepinephrine_low_affinity_threshold, mother_params.norepinephrine_low_affinity_threshold)
     child_params.neuromod_decay_rate = blend_bounded(father_params.neuromod_decay_rate, mother_params.neuromod_decay_rate, 0.001, 0.2)
+    # v3.33: Inherit reuptake transporter kinetics
+    child_params.reuptake_vmax_ne = blend_bounded(father_params.reuptake_vmax_ne, mother_params.reuptake_vmax_ne, 0.03, 0.15)
+    child_params.reuptake_vmax_da = blend_bounded(father_params.reuptake_vmax_da, mother_params.reuptake_vmax_da, 0.02, 0.10)
+    child_params.reuptake_vmax_5ht = blend_bounded(father_params.reuptake_vmax_5ht, mother_params.reuptake_vmax_5ht, 0.01, 0.07)
+    child_params.reuptake_vmax_ach = blend_bounded(father_params.reuptake_vmax_ach, mother_params.reuptake_vmax_ach, 0.04, 0.20)
+    child_params.reuptake_km = blend_bounded(father_params.reuptake_km, mother_params.reuptake_km, 0.2, 1.0)
+    child_params.autoreceptor_strength = blend_bounded(father_params.autoreceptor_strength, mother_params.autoreceptor_strength, 0.5, 1.5)
     child_params.diffusion_rate = blend_bounded(father_params.diffusion_rate, mother_params.diffusion_rate, 0.005, 0.1)
     
     # --- Oscillators & Synchronization ---
