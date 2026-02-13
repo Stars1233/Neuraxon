@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Config v3.31 
+# Neuraxon Game of Life Config v3.32 
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -133,6 +133,11 @@ TEMP_DECAY_RATE = 0.008        # v3.3: Down from 0.015 — slower homeostasis
 TEMP_BASELINE_VARIANCE = 1.0   # v3.3: Up from 0.5 — more individual variation
 TEMP_NIGHT_DROP = 4.0          # v3.31: Up from 2.5 — much stronger circadian drop
 TEMP_DAY_WARMING = 1.5         # v3.31: NEW — explicit day warming constant
+
+# v3.32: Temporal correlation rolling window (ticks) for temperature–circadian correlation
+TEMP_CIRCADIAN_CORR_WINDOW = 50  # ~8% of a 600-tick circadian cycle — enough phase variation
+# v3.32: Silencing threshold — active synapses with activity below this AND low integrity can become silent
+SYNAPSE_SILENCING_ACTIVITY_THRESHOLD = 0.005  # Below this total |w_fast|+|w_slow|, eligible for silencing
 
 @dataclass
 class NetworkParameters:

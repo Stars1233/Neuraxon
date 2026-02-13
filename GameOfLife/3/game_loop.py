@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Game Loop v3.31 
+# Neuraxon Game of Life Game Loop v3.31
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -45,7 +45,7 @@ from simulation.entities import NxEr, NxErStats, Food, Proprioceptron
 from ui.renderer import Renderer
 
 # Import config constants
-from config import CIRCADIAN_CYCLE_TICKS, TEMP_BASELINE, TEMP_MIN, TEMP_MAX, TEMP_NIGHT_DROP, TEMP_ACTIVITY_GAIN, TEMP_SOCIAL_GAIN, TEMP_FOOD_GAIN, TEMP_DECAY_RATE, TEMP_BASELINE_VARIANCE, RESTING_METABOLISM_MULTIPLIER, RESTING_METABOLISM_MULT
+from config import CIRCADIAN_CYCLE_TICKS, TEMP_BASELINE, TEMP_MIN, TEMP_MAX, TEMP_NIGHT_DROP, TEMP_ACTIVITY_GAIN, TEMP_SOCIAL_GAIN, TEMP_FOOD_GAIN, TEMP_DECAY_RATE, TEMP_BASELINE_VARIANCE, RESTING_METABOLISM_MULTIPLIER, RESTING_METABOLISM_MULT, TEMP_CIRCADIAN_CORR_WINDOW, SYNAPSE_SILENCING_ACTIVITY_THRESHOLD
 
 # ============================================================================
 # CIRCADIAN RHYTHM SYSTEM (NEW v3.0)

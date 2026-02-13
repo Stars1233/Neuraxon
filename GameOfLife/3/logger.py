@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from simulation.entities import NxEr
     from neuraxon.network import NeuraxonNetwork
 
+from config import TEMP_CIRCADIAN_CORR_WINDOW
+
 
 class DataLogger:
     """
@@ -1029,9 +1031,21 @@ class DataLogger:
         else:
             self.time_series['food_consumption_rate'].append(0.0)
         
-        if len(temps) >= 2 and np.std(temps) > 0 and np.std(phases) > 0:
-            corr = np.corrcoef(temps, phases)[0, 1]
-            self.time_series['temperature_circadian_correlation'].append(float(corr) if not np.isnan(corr) else 0.0)
+        # v3.32 FIX: Temporal correlation over rolling window instead of cross-NxEr at single tick.
+        # Old code compared temps vs phases across NxErs at one tick, but all NxErs share the same
+        # global circadian_phase → std(phases)≈0 → always returned 0.0.
+        # New: correlate the mean_body_temperature and circadian_phase time series over recent ticks.
+        ts_temp = self.time_series['mean_body_temperature']
+        ts_phase = self.time_series['circadian_phase']
+        window = TEMP_CIRCADIAN_CORR_WINDOW
+        if len(ts_temp) >= window and len(ts_phase) >= window:
+            t_win = np.array(ts_temp[-window:])
+            p_win = np.array(ts_phase[-window:])
+            if np.std(t_win) > 1e-9 and np.std(p_win) > 1e-9:
+                corr = np.corrcoef(t_win, p_win)[0, 1]
+                self.time_series['temperature_circadian_correlation'].append(float(corr) if not np.isnan(corr) else 0.0)
+            else:
+                self.time_series['temperature_circadian_correlation'].append(0.0)
         else:
             self.time_series['temperature_circadian_correlation'].append(0.0)
         

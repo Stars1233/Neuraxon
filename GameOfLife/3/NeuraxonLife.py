@@ -1,4 +1,4 @@
-# Neuraxon Game of Life v.3.31 (Research Version): added meta_influence_gain & meta_da_boost & save_state() fixes 
+# Neuraxon Game of Life v.3.32 (Research Version): fixed temperature -> circadian correlation & active_to_silent transitions
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife

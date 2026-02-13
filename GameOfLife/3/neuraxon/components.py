@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Neuron Components v3.31 
+# Neuraxon Game of Life Neuron Components v3.31
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple, Optional
 
 # Import local modules
 from .enums import SynapseType
-from config import NetworkParameters
+from config import NetworkParameters, SYNAPSE_SILENCING_ACTIVITY_THRESHOLD
 from utils import _variate
 from logger import get_data_logger
 
@@ -321,7 +321,7 @@ class Synapse:
         # Track previous silent state
         was_silent = self.is_silent
 
-        if self.is_silent and self.pre_trace > 0.5 and random.random() < 0.01:
+        if self.is_silent and self.pre_trace > 0.5 and random.random() < 0.01:  # silent → active
             self.is_silent = False
             # NEW: Log the event
             logger = get_data_logger()
@@ -333,6 +333,24 @@ class Synapse:
                     became_active=True,
                     trigger="pre_trace_threshold"
                 )
+
+        # v3.32 FIX: Active → silent transition.
+        # BIOINSPIRED: Synapses with prolonged inactivity undergo functional silencing
+        # (AMPA receptor internalization). Mirrors LTD-driven silent synapse formation
+        # observed in hippocampal circuits (Paper Section 5 — complex signaling).
+        if not self.is_silent and not was_silent:
+            activity = abs(self.w_fast) + abs(self.w_slow)
+            if activity < SYNAPSE_SILENCING_ACTIVITY_THRESHOLD and self.integrity < 0.3 and random.random() < 0.008:
+                self.is_silent = True
+                logger = get_data_logger()
+                if logger.log_level >= 2:
+                    logger.log_silent_synapse_event(
+                        tick=0,
+                        pre_id=self.pre_id,
+                        post_id=self.post_id,
+                        became_active=False,
+                        trigger="inactivity_silencing"
+                    )
 
         self.synapse_type = self._determine_type()
     
