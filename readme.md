@@ -228,8 +228,6 @@ MIT License. See `LICENSE` file for details.
 - ❌ **NO use by military-affiliated entities**
 - ❌ **NO dual-use applications** with military potential
 
-**See [NOTICE](NOTICE) for full details.**
-
 The standalone Neuraxon implementation (without Aigarth integration) has no such restrictions.
 
 ## 🙏 Acknowledgments
@@ -247,6 +245,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
