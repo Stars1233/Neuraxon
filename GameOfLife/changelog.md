@@ -1,5 +1,32 @@
 # Neuraxon Game of Life Researh Version<br>
 CHANGE LOG:<br>
+February 13th 2026: v3.32 & v3.33<br>
+
+-> enzymatic clearance + autoreceptor feedback for neuromodulator homeostasis<br>
+-> fixed temperature -> circadian correlation & active_to_silent transitions<br>
+February 12th 2026: v3.31<br>
+
+-> added meta_influence_gain & meta_da_boost & save_state() fixes<br>
+February 10th 2026: v3.3<br>
+
+-> Core plasticity rewrite LTP &LTD Fast/slow differentiation & Body/circadian fixes<br>
+February 2nd 2026: v3.2<br>
+
+-> Several updates for the new senses & circadian cycle<br>
+January 31st 2026: v3.01<br>
+
+-> Updated Input and Output Neurons<br>
+-> NUM_INPUT_NEURONS = 9 # Movement, Terrain, TerrainType, Hunger, Sight, Smell, DayNight, Temperature, Proprioception<br>
+-> NUM_OUTPUT_NEURONS = 6 # MoveX, MoveY, Social, MateIntent, GiveFood, Resting<br>
+
+January 29th 2026: v3.0<br>
+
+-> 🌗 Circadian Rhythms: Implemented bio-inspired Day/Night cycles affecting metabolism, hormone levels (Melatonin/Serotonin), and behavior.<br>
+-> 🌡️ Thermodynamics System: Added body temperature regulation, environmental heat exchange, and social huddling mechanics.<br>
+-> 🧱 Proprioception: Agents now possess "body awareness" to detect collision history and escape movement loops.<br>
+-> 🧠 Expanded Architecture: Network updated to 9 Inputs / 6 Outputs to process environmental and somatic data.<br>
+-> 📁 Modular Refactoring: Codebase restructured into a scalable Python package format.<br>
+
 Jan 29th 2026:<br>
 -> v.3.0 bio-Physical Coupling: Circadian Rhythms, Thermodynamics & Proprioceptionts<br>
 Jan 26th 2026:<br>
