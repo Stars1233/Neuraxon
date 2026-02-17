@@ -225,6 +225,20 @@ The hybrid creates "living neural tissue" that:
 - 💾 **Save/Load System**: Preserve entire worlds or extract champion agents - Test Mode for Automated World creation
 
 
+
+Also Experience Neuraxon's trinary neural dynamics with our **interactive 3D visualization** at [HuggingFace](https://huggingface.co/spaces/DavidVivancos/Neuraxon).
+
+### Interactive Network Builder Demo Features:
+- 🧠 **Build Custom Networks**: Configure neurons, synapses, and plasticity parameters
+- 🎯 **Interactive Controls**: Manually set input neuron states (excitatory/neutral/inhibitory)
+- 🔬 **Live Neuromodulation**: Adjust dopamine 🎯, serotonin 😊, acetylcholine 💡, and norepinephrine ⚡ in real-time
+- 📊 **3D Visualization**: Watch neural activity flow through the network with curved synaptic connections
+- ⚙️ **Preset Configurations**: Try small networks, large networks, high plasticity modes, and more
+- ▶️ **Real-time Simulation**: Run continuous processing and observe emergent dynamics
+
+No installation required—just open your browser and explore!
+
+
 ## 📚 Citation
 
 If you use Neuraxon in your research, please cite:
