@@ -165,6 +165,16 @@ If you use Neuraxon 1.0 in your research, please cite:
     url={https://www.researchgate.net/publication/397331336_Neuraxon}
 }
 ```
+If you use the Neuraxon2LifeTS dataset, please also cite:
+```bibtex
+@dataset{Neuraxon2LifeTS,
+  title={Neuraxon 2.0 Time Series Dataset},
+  author={Vivancos, David and Sanchez, Jose},
+  year={2026},
+  publisher={Hugging Face},
+  url={https://huggingface.co/datasets/DavidVivancos/Neuraxon2LifeTS}
+}
+```
 
 If you use the NeuraxonLife2-1M dataset, please also cite:
 ```bibtex
@@ -245,6 +255,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
