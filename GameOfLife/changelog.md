@@ -1,7 +1,7 @@
 # Neuraxon Game of Life Researh Version<br>
 CHANGE LOG:<br>
 March 11th 2026: v3.34 & v.3.35 & v 3.5 <br>
-v 3.5 (Neuraxon 2.0 Compliant) Internal version 104
+v 3.5 (Neuraxon 2.0 Compliant) Internal version 104<br>
 v.3.34 > movement bias fix <br>
 v.3.35 > fix for Neuron Health Unbounded Collapse  <br>
 
