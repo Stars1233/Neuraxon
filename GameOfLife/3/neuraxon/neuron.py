@@ -141,8 +141,19 @@ class Neuraxon:
         self.energy_level = max(0.0, min(self.energy_baseline * 1.5, self.energy_level + recovery - consumption))
         
         if self.energy_level < 10.0:
-            self.health -= self.neuron_health_decay * dt * 2.0
-            self.membrane_potential *= 0.9
+            # v3.35/RC6-FIX: Reduced penalty multiplier 2.0→1.2 (was creating death spiral).
+            # BIOINSPIRED: Metabolic stress damages neurons but not at catastrophic rate;
+            # cellular stress-response (UPR, heat-shock proteins) provides partial protection.
+            self.health -= self.neuron_health_decay * dt * 1.2
+            self.membrane_potential *= 0.95  # Gentler potential damping (was 0.9)
+            self.health = max(-0.5, self.health)  # Enforce floor here too
+        elif self.energy_level > self.params.critical_energy_level:
+            # v3.35/RC6-FIX NEW: Energy-conditional health recovery.
+            # BIOINSPIRED: Adequate ATP drives mitochondrial biogenesis and
+            # protein synthesis, actively repairing neuronal structure.
+            # Recovery is slow but steady when metabolically healthy.
+            self.health = min(1.0, self.health + 0.001 * dt)
+
     
     def _update_intrinsic_timescale(self, dt: float):
         """Update intrinsic timescale based on autocorrelation."""
@@ -401,7 +412,15 @@ class Neuraxon:
                                                        branch.get_local_ca_influx())
         
         # Use individualized health decay
-        self.health = min(1.0, self.health + 0.0005 * dt) if activity_level >= 0.01 else self.health - self.neuron_health_decay * dt
+        # v3.35/RC6-FIX: Increased recovery rate (0.0005→0.003) to match decay magnitude.
+        # BIOINSPIRED: Neurotrophic factors (BDNF/NGF) actively repair active neurons.
+        # Added health floor at -0.5: structural proteins maintain minimum integrity.
+        if activity_level >= 0.01:
+            self.health = min(1.0, self.health + 0.003 * dt)
+        else:
+            self.health -= self.neuron_health_decay * dt
+        self.health = max(-0.5, self.health)
+
         
         self._update_energy(activity_level, abs(self.trinary_state - prev_state) * 0.1, dt)
         
