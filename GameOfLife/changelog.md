@@ -1,5 +1,8 @@
 # Neuraxon Game of Life Researh Version<br>
 CHANGE LOG:<br>
+March 11th 2026: v3.34 <br>
+v.3.34 > movement bias fix <br>
+
 February 13th 2026: v3.32 & v3.33<br>
 
 -> enzymatic clearance + autoreceptor feedback for neuromodulator homeostasis<br>
