@@ -25,9 +25,9 @@
   <img src="images/Neuraxonv2.0DemoSreenshot.png" alt="Neuraxon 2.0 Builder" width="90%"/>  
 </div>
 
+**Neuraxon Game of Life 3.5 Research Version (Based on Neuraxon 2.0) code:** (https://github.com/DavidVivancos/Neuraxon/tree/main/GameOfLife/3.5))
 
-
-**Neuraxon 1 - Game of Life Lite Demo:** [Neuraxon Game of Life Hugging Face Space](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife)
+**Neuraxon Game of Life 3.0 Lite (Based on Neruaxon 1.0)  Demo:** [Neuraxon Game of Life Hugging Face Space](https://huggingface.co/spaces/DavidVivancos/NeuraxonLife)
 <div align="center">
   <img src="images/NeuraxonGameOfLife3.0-DemoSreenshot.jpg" alt="Neuraxon Game of Life Visualization" width="90%"/>  
 </div>
@@ -255,6 +255,7 @@ Special thanks to the Qubic's Aigarth team for the evolutionary tissue framework
 <div align="center">
 <i>Building brain-inspired AI, one Neuraxon at a time</i> 🧠✨
 </div>
+
 
 
 
