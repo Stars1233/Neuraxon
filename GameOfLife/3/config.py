@@ -1,4 +1,4 @@
-# Neuraxon Game of Life Config v3.33 
+# Neuraxon Game of Life Config v3.34
 # Based on the Paper "Neuraxon: A New Neural Growth & Computation Blueprint" by David Vivancos https://vivancos.com/  & Dr. Jose Sanchez  https://josesanchezgarcia.com/ for Qubic Science https://qubic.org/
 # https://www.researchgate.net/publication/397331336_Neuraxon
 # Play the Lite Version of the Game of Life at https://huggingface.co/spaces/DavidVivancos/NeuraxonLife
@@ -206,8 +206,12 @@ class NetworkParameters:
     # --- Membrane Potential Dynamics (NEW v2.36) ---
     resting_potential_decay: float = 0.05  # v2.92: Balanced decay for symmetric state persistence
     
-    # --- Negative Bias for E/I Balance (NEW v2.37c) ---
-    membrane_negative_bias: float = -0.06  # v2.92: Reduced from -0.25 to reduce inhibitory dominance
+    # v3.34 RC1-FIX: Set to 0.0 — the constant negative bias was the primary driver of
+    # output locking into inhibitory state (97.5% SW quadrant, ~40% outputs at -1).
+    # BIOINSPIRED: Biological resting potential is maintained by Na+/K+-ATPase pump
+    # equilibrium, not by a tonic inhibitory current. The resting_potential_decay
+    # parameter already models passive return to resting potential via leak channels.
+    membrane_negative_bias: float = 0.0  # v3.34: Was -0.06; removed — see RC1 diagnostics
     
     # --- Dendritic Branch Properties ---
     num_dendritic_branches: int = 3 

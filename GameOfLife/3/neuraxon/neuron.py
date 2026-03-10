@@ -212,10 +212,14 @@ class Neuraxon:
         if random.random() < spont_prob:
             is_spontaneous_firing = True
             if self.params.spontaneous_as_current:
-                # v2.92: Balanced spontaneous current - 60% inhibitory, 40% excitatory
-                # BIOINSPIRED: Cortical spontaneous activity explores full state space
-                # Paper claim: trinary states capture "excitatory, neutral, and inhibitory dynamics"
-                spontaneous = random.choice([-1.0]*6 + [1.0]*4) * self.params.spontaneous_current_magnitude
+                # v3.34 RC1-FIX: Balanced spontaneous current — 50% inhibitory, 50% excitatory
+                # BIOINSPIRED: Cortical spontaneous activity explores the FULL trinary
+                # state space symmetrically. In vivo, balanced E/I networks produce
+                # approximately equal rates of spontaneous excitatory and inhibitory
+                # postsynaptic events (Haider et al. 2006, J Neurosci). The prior 60/40
+                # inhibitory bias compounded with membrane_negative_bias to lock outputs
+                # into -1 from initialization (RC1 diagnostic: 97.5% SW quadrant).
+                spontaneous = random.choice([-1.0, 1.0]) * self.params.spontaneous_current_magnitude
             else:
                 # Legacy: force threshold
                 if random.random() < 0.5:
@@ -226,7 +230,7 @@ class Neuraxon:
         threshold_mod = (acetylcholine - 0.5) * 0.5 + sum(modulatory_inputs) * 0.3
         gain = 1.0 + (norepi - 0.5) * 0.4
         
-        # v2.92: Reduced negative bias multiplier for balanced trinary states
+        # v3.34 RC1-FIX: Bias now 0.0 from config; kept in formula for backward compat
         negative_bias = getattr(self.params, 'membrane_negative_bias', -0.06)
         
         drive = (total_synaptic + external_input + spontaneous + negative_bias * 2.0) * gain
@@ -234,18 +238,17 @@ class Neuraxon:
         tau_eff = max(1.0, self.intrinsic_timescale)
         prev_state = self.trinary_state
         
-        # v2.92: More symmetric membrane decay for balanced state persistence
-        # BIOINSPIRED: Allow both positive and negative states to persist
+        # v3.34 RC1-FIX: Fully symmetric membrane decay
+        # BIOINSPIRED: Passive membrane leak conductance is direction-agnostic —
+        # both depolarisation and hyperpolarisation decay toward resting potential
+        # at the same rate, governed by the membrane time constant and leak channels.
+        # The prior asymmetry (positive 1.1×, negative 0.85×) created a ratchet effect
+        # that trapped membrane potential in the negative range, contributing to RC1.
         # Paper claim: neutral state enables "swift transitions based on subsequent inputs"
         if hasattr(self.params, 'resting_potential_decay'):
             resting_decay = self.params.resting_potential_decay * dt
-            if self.membrane_potential > 0:
-                # v2.92: Positive potentials decay slightly faster
-                self.membrane_potential *= (1.0 - resting_decay * 1.1)
-            else:
-                # v2.92: Negative potentials decay at 0.85 rate (was 0.5)
-                # More symmetric decay allows neutral state to act as transition buffer
-                self.membrane_potential *= (1.0 - resting_decay * 0.85)
+            # v3.34: Symmetric decay for both positive and negative potentials
+            self.membrane_potential *= (1.0 - resting_decay)
         
         # Store previous potential for subthreshold logging
         prev_potential = self.membrane_potential
@@ -295,8 +298,11 @@ class Neuraxon:
         # v2.36: Increased autoreceptor effect for stronger negative feedback
         autoreceptor_effect = 0.22 * self.autoreceptor
         theta_exc = self.firing_threshold_excitatory - threshold_mod + autoreceptor_effect + threshold_energy_mod
-        # v2.92: Inhibitory threshold has MODERATE autoreceptor effect (more balanced)
-        theta_inh = self.firing_threshold_inhibitory - threshold_mod - autoreceptor_effect * 0.5 - threshold_energy_mod * 0.5
+        # v3.34 RC1-FIX: Symmetric autoreceptor negative feedback on inhibitory threshold
+        # BIOINSPIRED: D2-type autoreceptors sense released neurotransmitter from ANY
+        # firing and dampen further activity equally regardless of sign. The prior 0.5×
+        # factor let inhibitory firing escape negative feedback, sustaining -1 lock-in.
+        theta_inh = self.firing_threshold_inhibitory - threshold_mod - autoreceptor_effect - threshold_energy_mod * 0.5
         
         # v2.92: Symmetric hysteresis for balanced state transitions
         # Paper claim: neutral state provides "responsiveness without immediate action"
