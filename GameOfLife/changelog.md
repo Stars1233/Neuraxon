@@ -1,5 +1,7 @@
 # Neuraxon Game of Life Researh Version<br>
 CHANGE LOG:<br>
+March 13th 2026:<br>
+V 2.5 Versions for Active & Passive Binary comparisons needed for the paper The Neutral Buffer State: Trinary Logic Advantage in Branching Ratio Stability for Continuous-Time Networks<br>
 March 11th 2026: v3.34 & v.3.35 & v 3.5 <br>
 v 3.5 (Neuraxon 2.0 Compliant) Internal version 104<br>
 v.3.34 > movement bias fix <br>
