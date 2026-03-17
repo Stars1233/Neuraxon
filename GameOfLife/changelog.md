@@ -1,5 +1,8 @@
 # Neuraxon Game of Life Researh Version<br>
 CHANGE LOG:<br>
+March 17th 2026:<br>
+# Neuraxon Game of Life v.3.5  Headless (Research Version): For Neuraxon 2.0 (No Game GUI)<br>
+# Used to capture the dataset: https://huggingface.co/datasets/DavidVivancos/Neuraxon2LifeTS<br>
 March 13th 2026:<br>
 V 2.5 Versions for Active & Passive Binary comparisons needed for the paper The Neutral Buffer State: Trinary Logic Advantage in Branching Ratio Stability for Continuous-Time Networks<br>
 March 11th 2026: v3.34 & v.3.35 & v 3.5 <br>
