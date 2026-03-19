@@ -30,7 +30,7 @@
   <img src="images/MultiNeuraxon2.0.png" alt="Neuraxon 2.0 Multshpere" width="90%"/>  
 </div>
 
-**Core implementation:** [`neuraxon2.py`](https://github.com/DavidVivancos/Neuraxon/blob/main/MultiNeuraxon2.py)
+**Core implementation:** [`MultiNeuraxon2.py`](https://github.com/DavidVivancos/Neuraxon/blob/main/MultiNeuraxon2.py)
 
 **Neuraxon Game of Life 3.5 Research Version (Based on Neuraxon 2.0) code:** (https://github.com/DavidVivancos/Neuraxon/tree/main/GameOfLife/3.5))
 
