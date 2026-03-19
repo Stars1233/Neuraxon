@@ -20,10 +20,16 @@
 
 **Core implementation:** [`neuraxon2.py`](https://github.com/DavidVivancos/Neuraxon/blob/main/neuraxon2.py) (pure Python, no external dependencies, backward-compatible with v1).
 
-**Interactive 3D Network Builder Demo** (no install): [Hugging Face Space](https://huggingface.co/spaces/DavidVivancos/Neuraxon)
+**Interactive 3D Network Builder Demo** : [Hugging Face Space](https://huggingface.co/spaces/DavidVivancos/Neuraxon)
 <div align="center">
   <img src="images/Neuraxonv2.0DemoSreenshot.png" alt="Neuraxon 2.0 Builder" width="90%"/>  
 </div>
+
+**Multi Neuraxon 2.0  Multi-Sphere 3D Network Builder Demo:** : (https://huggingface.co/spaces/DavidVivancos/MultiNeuraxon2)
+<div align="center">
+  <img src="images/MultiNeuraxon2.0.png" alt="Neuraxon 2.0 Multshpere" width="90%"/>  
+</div>
+
 
 **Neuraxon Game of Life 3.5 Research Version (Based on Neuraxon 2.0) code:** (https://github.com/DavidVivancos/Neuraxon/tree/main/GameOfLife/3.5))
 
