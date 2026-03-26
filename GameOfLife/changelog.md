@@ -1,5 +1,7 @@
 # Neuraxon Game of Life Researh Version<br>
 CHANGE LOG:<br>
+March 26th 2026:<br>
+Neuraxon Game of Life v.4.0  Multi-Nxon 2.0 (Research Version): For Neuraxon 2.0 <br>
 March 17th 2026:<br>
 Neuraxon Game of Life v.3.5  Headless (Research Version): For Neuraxon 2.0 (No Game GUI)<br>
 Used to capture the dataset: https://huggingface.co/datasets/DavidVivancos/Neuraxon2LifeTS<br>
